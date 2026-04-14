@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-neutral-50 text-neutral-900 dark:bg-dark-bg dark:text-dark-text;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-neutral-300 dark:bg-dark-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-neutral-400; }
+}
+
+@layer components {
+  .card { @apply bg-white dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-xl shadow-card; }
+  .card-hover { @apply hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200; }
+  .btn-primary { @apply bg-primary-500 hover:bg-primary-600 text-white font-medium px-4 py-2 rounded-lg transition-all duration-150 active:scale-95 text-sm; }
+  .btn-secondary { @apply bg-neutral-100 hover:bg-neutral-200 dark:bg-dark-border dark:hover:bg-neutral-700 text-neutral-700 dark:text-dark-text font-medium px-4 py-2 rounded-lg transition-all duration-150 active:scale-95 text-sm; }
+  .btn-ghost { @apply hover:bg-neutral-100 dark:hover:bg-dark-border text-neutral-600 dark:text-dark-muted font-medium px-3 py-2 rounded-lg transition-all duration-150 text-sm; }
+  .input { @apply w-full bg-white dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-dark-text placeholder-neutral-400 dark:placeholder-dark-muted focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 transition-all duration-150; }
+  .label { @apply text-xs font-medium text-neutral-500 dark:text-dark-muted uppercase tracking-wide mb-1 block; }
+  .badge-danger { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400; }
+  .badge-warning { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400; }
+  .badge-success { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400; }
+  .badge-blue { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400; }
+  .badge-gray { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400; }
+  .sidebar-link { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer select-none; }
+  .sidebar-link-active { @apply bg-primary-500 text-white shadow-sm; }
+  .sidebar-link-inactive { @apply text-neutral-600 dark:text-dark-muted hover:bg-neutral-100 dark:hover:bg-dark-border hover:text-neutral-900 dark:hover:text-dark-text; }
+  .table-th { @apply text-left text-xs font-semibold text-neutral-500 dark:text-dark-muted uppercase tracking-wide px-4 py-3 bg-neutral-50 dark:bg-dark-bg border-b border-neutral-200 dark:border-dark-border; }
+  .table-td { @apply px-4 py-3 text-sm text-neutral-700 dark:text-dark-text border-b border-neutral-100 dark:border-dark-border/50; }
+  .section-title { @apply text-lg font-semibold text-neutral-900 dark:text-dark-text; }
+  .page-title { @apply text-2xl font-bold text-neutral-900 dark:text-dark-text; }
+  .map-container { background: #1a2744; }
+}
