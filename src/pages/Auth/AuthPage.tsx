@@ -126,7 +126,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               <label className="label">Adresse email</label>
               <div className="relative">
                 <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <input type="email" placeholder="sophie.martin@geo.io" className="input pl-8"
+                <input type="email" placeholder="email@domaine.com" className="input pl-8"
                   value={email} onChange={e => setEmail(e.target.value)} />
               </div>
             </div>
