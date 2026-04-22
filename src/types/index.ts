@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'analyst' | 'decision-maker';
+export type UserRole = 'admin' | 'analyst' ;
 export type Theme = 'light' | 'dark';
 export type PageId =
   | 'auth'
