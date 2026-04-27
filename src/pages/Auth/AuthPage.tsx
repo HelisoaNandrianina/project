@@ -53,15 +53,17 @@ async function loginApi(email: string, password: string): Promise<TokenOut> {
 }
 
 async function registerApi(
-  name: string,
+  firstName: string,
+  lastName: string,
   email: string,
   password: string,
   role: number,
   photo?: File | null
 ): Promise<TokenOut> {
-//upload fichier
   const formData = new FormData();
-  formData.append("name", name);
+  formData.append("first_name", firstName);
+  formData.append("last_name", lastName);
+  formData.append("name", `${firstName} ${lastName}`);
   formData.append("email", email);
   formData.append("password", password);
   formData.append("role", String(role));
@@ -71,7 +73,6 @@ async function registerApi(
 
   const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
-
     body: formData,
   });
   if (!res.ok) throw new Error((await res.json()).detail ?? "Erreur d'inscription");
@@ -79,7 +80,7 @@ async function registerApi(
 }
 
 
-
+// CONSTANTS
 
 const roles: {
   id: UserRole;
@@ -119,29 +120,31 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const [showPwd, setShowPwd] = useState(false);
 
   // Form fields
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  
+  // Photo
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
- 
+  // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
- 
+  // Photo handler
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     if (!file) return;
 
- 
+    // Vérification type
     if (!file.type.startsWith("image/")) {
       setError("Le fichier doit être une image (jpg, png, webp…).");
       return;
     }
+    // Vérification taille (max 2 Mo)
     if (file.size > 2 * 1024 * 1024) {
       setError("La photo ne doit pas dépasser 2 Mo.");
       return;
@@ -166,8 +169,12 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
       setError("Veuillez remplir tous les champs.");
       return;
     }
-    if (mode === "register" && !name.trim()) {
-      setError("Veuillez entrer votre nom complet.");
+    if (mode === "register" && !firstName.trim()) {
+      setError("Veuillez entrer votre prénom.");
+      return;
+    }
+    if (mode === "register" && !lastName.trim()) {
+      setError("Veuillez entrer votre nom.");
       return;
     }
 
@@ -179,7 +186,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         data = await loginApi(email, password);
       } else {
         const roleInt = roles.find((r) => r.id === selectedRole)?.roleInt ?? 2;
-        data = await registerApi(name, email, password, roleInt, photo);
+        data = await registerApi(firstName, lastName, email, password, roleInt, photo);
       }
 
       localStorage.setItem("token", data.access_token);
@@ -200,13 +207,15 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const switchMode = (m: "login" | "register") => {
     setMode(m);
     setError("");
+    setFirstName("");
+    setLastName("");
     removePhoto();
   };
 
-  //Render
+  //  Render 
   return (
     <div className="min-h-screen flex">
-      
+      {/*  LEFT PANEL  */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#0F172A] to-[#1E3A5F] relative overflow-hidden flex-col justify-between p-12">
         {/* Decorative rings */}
         <div className="absolute inset-0 opacity-10">
@@ -226,7 +235,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           ))}
         </div>
 
-     
+        {/* Decorative dots */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           {Array.from({ length: 20 }).map((_, i) => (
             <div
@@ -241,7 +250,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           ))}
         </div>
 
-    
+        {/* Logo */}
         <div className="relative flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary-500 flex items-center justify-center">
             <Globe size={20} className="text-white" />
@@ -254,7 +263,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           </div>
         </div>
 
-      
+        {/* Tagline + features */}
         <div className="relative space-y-6">
           <div>
             <h2 className="text-3xl font-bold text-white leading-tight">
@@ -280,7 +289,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           </div>
         </div>
 
-        
+        {/* Stats */}
         <div className="relative">
           <div className="flex gap-4">
             {[
@@ -300,7 +309,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         </div>
       </div>
 
-      
+      {/* ── RIGHT PANEL ──────────────────────── */}
       <div className="flex-1 flex items-center justify-center p-8 bg-neutral-50 dark:bg-dark-bg">
         <div className="w-full max-w-md animate-fade-in">
           {/* Mobile logo */}
@@ -313,7 +322,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </span>
           </div>
 
-         
+          {/* Header */}
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-neutral-900 dark:text-dark-text">
               {mode === "login" ? "Connexion" : "Créer un compte"}
@@ -325,7 +334,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </p>
           </div>
 
-         
+          {/* Mode switch */}
           <div className="flex p-1 bg-neutral-100 dark:bg-dark-card rounded-lg mb-6 border border-neutral-200 dark:border-dark-border">
             {(["login", "register"] as const).map((m) => (
               <button
@@ -342,13 +351,13 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             ))}
           </div>
 
-        
+          {/* Form card */}
           <div className="card p-6 space-y-4" onKeyDown={handleKeyDown}>
 
-         
+            {/* ── PHOTO DE PROFIL — register only ── */}
             {mode === "register" && (
               <div className="flex flex-col items-center gap-2 pb-2">
-                
+                {/* Avatar / aperçu */}
                 <div className="relative group">
                   <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-dashed border-neutral-300 dark:border-dark-border bg-neutral-100 dark:bg-dark-card flex items-center justify-center transition-all group-hover:border-primary-400">
                     {photoPreview ? (
@@ -362,7 +371,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                     )}
                   </div>
 
-                  
+                  {/* Bouton caméra superposé */}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -373,7 +382,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                   </button>
                 </div>
 
-                
+                {/* Input caché */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -382,7 +391,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                   onChange={handlePhotoChange}
                 />
 
-               
+                {/* Texte d'action */}
                 {photoPreview ? (
                   <div className="flex items-center gap-3">
                     <button
@@ -413,27 +422,45 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
             )}
 
-           
+            {/* Prénom & Nom — register only */}
             {mode === "register" && (
-              <div>
-                <label className="label">Nom complet</label>
-                <div className="relative">
-                  <User
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Sophie Martin"
-                    className="input pl-8"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Prénom</label>
+                  <div className="relative">
+                    <User
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Sophie"
+                      className="input pl-8"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Nom</label>
+                  <div className="relative">
+                    <User
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Martin"
+                      className="input pl-8"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             )}
 
-            
+            {/* Email */}
             <div>
               <label className="label">Adresse email</label>
               <div className="relative">
@@ -451,7 +478,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
             </div>
 
-            
+            {/* Password */}
             <div>
               <label className="label">Mot de passe</label>
               <div className="relative">
@@ -476,7 +503,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
             </div>
 
-            
+            {/* Role selector — register only */}
             {mode === "register" && (
               <div>
                 <label className="label">Rôle</label>
@@ -508,7 +535,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
             )}
 
-           
+            {/* Remember me / Forgot password — login only */}
             {mode === "login" && (
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -529,7 +556,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
             )}
 
-            
+            {/* Error message */}
             {error && (
               <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
                 <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -537,7 +564,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               </div>
             )}
 
-            
+            {/* Submit button */}
             <button
               type="button"
               onClick={handleSubmit}
@@ -558,7 +585,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </button>
           </div>
 
-       
+          {/* Switch link */}
           <p className="text-center text-xs text-neutral-400 dark:text-dark-muted mt-4">
             {mode === "login" ? "Pas encore de compte ?" : "Déjà un compte ?"}{" "}
             <button

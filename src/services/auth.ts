@@ -1,12 +1,15 @@
-const API_URL = "http://localhost:8000"; // adapte selon ton backend
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export interface UserOut {
   id: number;
-  name: string;
+  first_name: string;
+  last_name: string;
+  name: string | null;
   email: string;
   role: number;
   status: string;
   last_login: string;
+  photo_url: string | null;
 }
 
 export interface TokenOut {
@@ -26,27 +29,28 @@ export async function loginApi(email: string, password: string): Promise<TokenOu
 }
 
 export async function registerApi(
-  name: string,
+  firstName: string,
+  lastName: string,
   email: string,
   password: string,
   role: number,
-  photo?: File | null  
+  photo?: File | null
 ): Promise<TokenOut> {
-  
   const formData = new FormData();
-  formData.append("name", name);
+  formData.append("first_name", firstName);
+  formData.append("last_name", lastName);
+  formData.append("name", `${firstName} ${lastName}`);
   formData.append("email", email);
   formData.append("password", password);
   formData.append("role", String(role));
   if (photo) {
-    formData.append("photo", photo); 
+    formData.append("photo", photo);
   }
 
   const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
     body: formData,
   });
-
   if (!res.ok) throw new Error((await res.json()).detail || "Erreur d'inscription");
   return res.json();
 }
