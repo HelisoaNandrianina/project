@@ -29,13 +29,24 @@ export async function registerApi(
   name: string,
   email: string,
   password: string,
-  role: number
+  role: number,
+  photo?: File | null  
 ): Promise<TokenOut> {
+  
+  const formData = new FormData();
+  formData.append("name", name);
+  formData.append("email", email);
+  formData.append("password", password);
+  formData.append("role", String(role));
+  if (photo) {
+    formData.append("photo", photo); 
+  }
+
   const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, email, password, role }),
+    body: formData,
   });
+
   if (!res.ok) throw new Error((await res.json()).detail || "Erreur d'inscription");
   return res.json();
 }
