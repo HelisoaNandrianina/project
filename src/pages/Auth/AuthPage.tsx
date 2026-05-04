@@ -14,70 +14,16 @@ import {
   Camera,
 } from "lucide-react";
 import type { UserRole } from "../../types";
+import { loginApi, registerApi } from "../../services/auth";
+import type { UserOut } from "../../services/auth";
 
 
 // TYPES
 
 interface AuthPageProps {
-  onLogin: () => void;
+  onLogin: (token: string, user: UserOut) => void;
 }
 
-export interface UserOut {
-  id: number;
-  name: string;
-  email: string;
-  role: number;
-  status: string;
-  last_login: string;
-}
-
-export interface TokenOut {
-  access_token: string;
-  token_type: string;
-  user: UserOut;
-}
-
-
-// API
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-
-async function loginApi(email: string, password: string): Promise<TokenOut> {
-  const res = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Erreur de connexion");
-  return res.json();
-}
-
-async function registerApi(
-  firstName: string,
-  lastName: string,
-  email: string,
-  password: string,
-  role: number,
-  photo?: File | null
-): Promise<TokenOut> {
-  const formData = new FormData();
-  formData.append("first_name", firstName);
-  formData.append("last_name", lastName);
-  formData.append("name", `${firstName} ${lastName}`);
-  formData.append("email", email);
-  formData.append("password", password);
-  formData.append("role", String(role));
-  if (photo) {
-    formData.append("photo", photo);
-  }
-
-  const res = await fetch(`${API_URL}/auth/register`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Erreur d'inscription");
-  return res.json();
-}
 
 
 // CONSTANTS
@@ -180,7 +126,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
 
     setLoading(true);
     try {
-      let data: TokenOut;
+      let data: { access_token: string; token_type: string; user: UserOut };
 
       if (mode === "login") {
         data = await loginApi(email, password);
@@ -189,10 +135,8 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         data = await registerApi(firstName, lastName, email, password, roleInt, photo);
       }
 
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-
-      onLogin();
+      // Délègue la persistance au AuthContext
+      onLogin(data.access_token, data.user);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue.");
     } finally {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTheme } from './hooks/useTheme';
+import { useAuth } from './context/AuthContext';
 import type { PageId } from './types';
 
 import Sidebar from './components/Layout/Sidebar';
@@ -20,14 +21,14 @@ import { mockNotifications } from './data/mockData';
 
 export default function App() {
   const { theme, toggle } = useTheme();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { isAuthenticated, user, login, logout } = useAuth();
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const unreadCount = mockNotifications.filter(n => !n.read).length;
 
   if (!isAuthenticated) {
-    return <AuthPage onLogin={() => setIsAuthenticated(true)} />;
+    return <AuthPage onLogin={login} />;
   }
 
   const renderPage = () => {
@@ -53,6 +54,8 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(c => !c)}
         unreadCount={unreadCount}
+        user={user}
+        onLogout={logout}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Navbar
@@ -61,6 +64,8 @@ export default function App() {
           onThemeToggle={toggle}
           unreadCount={unreadCount}
           onNavigate={setActivePage}
+          user={user}
+          onLogout={logout}
         />
         <main className="flex-1 overflow-hidden flex flex-col">
           {renderPage()}
