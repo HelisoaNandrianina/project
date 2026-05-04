@@ -1,5 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* ── MapLibre GL CSS  ── */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -38,4 +41,17 @@
   .section-title { @apply text-lg font-semibold text-neutral-900 dark:text-dark-text; }
   .page-title { @apply text-2xl font-bold text-neutral-900 dark:text-dark-text; }
   .map-container { background: #1a2744; }
+}
+
+/* ── Popup MapLibre ── */
+.maplibregl-popup-content {
+  @apply bg-white dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-lg shadow-card px-3 py-2 text-sm;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.maplibregl-popup-tip {
+  border-top-color: white !important;
+}
+/* Masquer le bouton × natif MapLibre  */
+.maplibregl-popup-close-button {
+  display: none;
 }
