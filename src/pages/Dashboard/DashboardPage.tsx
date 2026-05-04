@@ -80,7 +80,7 @@ export default function DashboardPage({ onNavigate }: Props) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="section-title">Évolution du Revenu</h3>
-              <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5">7 derniers mois (en €)</p>
+              <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5">7 derniers mois (en MGA)</p>
             </div>
             <button onClick={() => onNavigate('dashboards')} className="text-xs text-primary-500 font-medium hover:text-primary-600 flex items-center gap-1">
               Voir plus <ArrowUpRight size={12} />
@@ -89,9 +89,9 @@ export default function DashboardPage({ onNavigate }: Props) {
           <LineChart data={revenueTimeline.map(d => ({ label: d.month, value: d.value }))} height={140} color="#2563EB" />
           <div className="mt-3 grid grid-cols-3 gap-3">
             {[
-              { l: 'Total Avril', v: '571 K€', c: 'text-neutral-900 dark:text-dark-text' },
+              { l: 'Total Avril', v: '571 K MGA', c: 'text-neutral-900 dark:text-dark-text' },
               { l: 'Croissance MoM', v: '+14.7%', c: 'text-success' },
-              { l: 'Prévision Mai', v: '~610 K€', c: 'text-neutral-500 dark:text-dark-muted' },
+              { l: 'Prévision Mai', v: '~610 K MGA', c: 'text-neutral-500 dark:text-dark-muted' },
             ].map((s, i) => (
               <div key={i} className="bg-neutral-50 dark:bg-dark-bg rounded-lg p-3 text-center">
                 <p className={`text-base font-bold ${s.c}`}>{s.v}</p>
@@ -192,7 +192,7 @@ export default function DashboardPage({ onNavigate }: Props) {
                   </td>
                   <td className="table-td">{z.coverage}%</td>
                   <td className="table-td">{z.pointCount}</td>
-                  <td className="table-td font-medium">{(z.revenue / 1000).toFixed(0)} K€</td>
+                  <td className="table-td font-medium">{(z.revenue / 1000).toFixed(0)} KMGA</td>
                   <td className="table-td">
                     <span className={`text-xs font-semibold ${z.trend >= 0 ? 'text-success' : 'text-danger'}`}>
                       {z.trend >= 0 ? '+' : ''}{z.trend}%

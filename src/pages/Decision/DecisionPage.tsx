@@ -27,8 +27,8 @@ const RECOMMENDATIONS = [
   {
     id: 'R4', priority: 'medium', zone: 'Zone Est',
     title: 'Opportunité de croissance',
-    desc: 'Densité de prospects qualifiés élevée en Zone Est. Convertir les 8 prospects en attente représente ~320K€ de CA potentiel.',
-    impact: 'CA potentiel : 320K€',
+    desc: 'Densité de prospects qualifiés élevée en Zone Est. Convertir les 8 prospects en attente représente ~320KMGA de CA potentiel.',
+    impact: 'CA potentiel : 320KMGA',
     action: 'Lancer la campagne',
   },
 ];
@@ -151,7 +151,7 @@ export default function DecisionPage() {
               </div>
 
               <div className="shrink-0 text-right space-y-1">
-                <div className="text-sm font-bold text-neutral-900 dark:text-dark-text">{(z.revenue / 1000).toFixed(0)}K€</div>
+                <div className="text-sm font-bold text-neutral-900 dark:text-dark-text">{(z.revenue / 1000).toFixed(0)}KMGA</div>
                 <div className={`text-xs font-semibold flex items-center gap-0.5 justify-end ${z.trend >= 0 ? 'text-success' : 'text-danger'}`}>
                   {z.trend >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
                   {z.trend >= 0 ? '+' : ''}{z.trend}%

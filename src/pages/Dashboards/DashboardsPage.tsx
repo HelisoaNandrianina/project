@@ -115,7 +115,7 @@ export default function DashboardsPage() {
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
-          { l: 'CA Total', v: '2.63M€', d: '+14.7%', pos: true },
+          { l: 'CA Total', v: '2.63M MGA', d: '+14.7%', pos: true },
           { l: 'Nouveaux pts', v: '+247', d: '+8.3%', pos: true },
           { l: 'Score Global', v: '68/100', d: '+3.1%', pos: true },
           { l: 'Taux Conversion', v: '23.4%', d: '-1.2%', pos: false },
@@ -231,7 +231,7 @@ export default function DashboardsPage() {
                     </td>
                     <td className="table-td">{z.pointCount}</td>
                     <td className="table-td">{z.coverage}%</td>
-                    <td className="table-td font-medium">{(z.revenue / 1000).toFixed(0)}K€</td>
+                    <td className="table-td font-medium">{(z.revenue / 1000).toFixed(0)}K MGA</td>
                     <td className="table-td">
                       <span className={`text-xs font-bold ${z.trend >= 0 ? 'text-success' : 'text-danger'}`}>
                         {z.trend >= 0 ? '+' : ''}{z.trend}%

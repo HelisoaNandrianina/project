@@ -150,7 +150,7 @@ export default function DataPage() {
                       <span className="text-xs font-semibold text-neutral-700 dark:text-dark-text">{d.score}</span>
                     </div>
                   </td>
-                  <td className="table-td font-medium">{d.revenue > 0 ? `${(d.revenue / 1000).toFixed(0)}K€` : '—'}</td>
+                  <td className="table-td font-medium">{d.revenue > 0 ? `${(d.revenue / 1000).toFixed(0)}K MGA` : '—'}</td>
                   <td className="table-td">{statusBadge(d.status)}</td>
                   <td className="table-td">
                     <div className="flex items-center gap-1">
