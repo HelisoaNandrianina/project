@@ -28,9 +28,9 @@ export default function MapPage() {
   const [filterScore, setFilterScore] = useState(0);
   const [search,      setSearch]      = useState('');
   const [viewState,   setViewState]   = useState({
-    longitude: 2.352,
-    latitude:  48.856,
-    zoom:      10,
+    longitude: 47.537,   // Antananarivo
+    latitude:  -18.910,
+    zoom:      12,
   });
 
   // ─── Filtrage identique à l'original ───────────────────────────────────────
@@ -96,7 +96,7 @@ export default function MapPage() {
 
   // ─── Reset vue ─────────────────────────────────────────────────────────────
   const resetView = () =>
-    setViewState({ longitude: 2.352, latitude: 48.856, zoom: 10 });
+    setViewState({ longitude: 47.537, latitude: -18.910, zoom: 12 });
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -150,7 +150,7 @@ export default function MapPage() {
             />
           </div>
         </div>
-
+++
         <div className="p-4 flex-1">
           <label className="label mb-2">Légende</label>
           {[

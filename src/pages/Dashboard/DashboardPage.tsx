@@ -1,57 +1,99 @@
+import { useRef, useCallback } from 'react';
 import { MapPin, Users, TrendingUp, AlertTriangle, Activity, ArrowUpRight, Clock } from 'lucide-react';
+import Map, { Source, Layer } from 'react-map-gl/maplibre';
+import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import KPICard from '../../components/UI/KPICard';
 import { BarChart, LineChart, DonutChart } from '../../components/UI/Charts';
-import { mockZones, revenueTimeline, zoneBarData, segmentData, mockNotifications } from '../../data/mockData';
+import { mockZones, revenueTimeline, zoneBarData, segmentData, mockNotifications, mockDataPoints } from '../../data/mockData';
 import type { PageId } from '../../types';
 
 interface Props { onNavigate: (page: PageId) => void; }
 
-const MockMiniMap = () => (
-  <div className="w-full h-full map-container rounded-lg overflow-hidden relative">
-    <svg viewBox="0 0 400 200" className="w-full h-full opacity-60">
-      <rect width="400" height="200" fill="#1a2744" />
-      {Array.from({ length: 12 }).map((_, i) => (
-        <line key={`h${i}`} x1="0" y1={i * 18} x2="400" y2={i * 18} stroke="#243560" strokeWidth="0.5" />
-      ))}
-      {Array.from({ length: 22 }).map((_, i) => (
-        <line key={`v${i}`} x1={i * 20} y1="0" x2={i * 20} y2="200" stroke="#243560" strokeWidth="0.5" />
-      ))}
-      <path d="M 60 80 Q 120 60 180 90 Q 220 110 280 80 Q 340 55 380 70" fill="none" stroke="#334177" strokeWidth="8" strokeLinecap="round" />
-      <path d="M 20 130 Q 80 115 150 125 Q 200 135 260 120 Q 310 108 360 115" fill="none" stroke="#334177" strokeWidth="5" strokeLinecap="round" />
-      {[
-        { cx: 80, cy: 75, r: 30, fill: '#2563EB', opacity: 0.12 },
-        { cx: 200, cy: 95, r: 45, fill: '#2563EB', opacity: 0.18 },
-        { cx: 300, cy: 78, r: 25, fill: '#10B981', opacity: 0.12 },
-        { cx: 160, cy: 130, r: 35, fill: '#F59E0B', opacity: 0.1 },
-      ].map((c, i) => <circle key={i} cx={c.cx} cy={c.cy} r={c.r} fill={c.fill} opacity={c.opacity} />)}
-      {[
-        { cx: 80, cy: 75, color: '#3B82F6' },
-        { cx: 120, cy: 65, color: '#3B82F6' },
-        { cx: 200, cy: 90, color: '#10B981' },
-        { cx: 240, cy: 82, color: '#3B82F6' },
-        { cx: 300, cy: 78, color: '#10B981' },
-        { cx: 155, cy: 125, color: '#F59E0B' },
-        { cx: 175, cy: 135, color: '#EF4444' },
-        { cx: 330, cy: 68, color: '#3B82F6' },
-        { cx: 60, cy: 145, color: '#F59E0B' },
-      ].map((m, i) => (
-        <g key={i}>
-          <circle cx={m.cx} cy={m.cy} r="5" fill={m.color} opacity="0.9" />
-          <circle cx={m.cx} cy={m.cy} r="9" fill={m.color} opacity="0.2" />
-        </g>
-      ))}
-    </svg>
-    <div className="absolute top-2 left-2 flex gap-1">
-      {[{ c: '#3B82F6', l: 'Clients' }, { c: '#10B981', l: 'Partenaires' }, { c: '#F59E0B', l: 'Prospects' }].map((l, i) => (
-        <div key={i} className="flex items-center gap-1 bg-black/50 px-1.5 py-0.5 rounded text-[9px] text-white backdrop-blur-sm">
-          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: l.c }} />
-          {l.l}
-        </div>
-      ))}
-    </div>
-  </div>
-);
+// ─── Couleurs par type (identique à MapPage) ─────────────────────────────────
+const TYPE_COLORS: Record<string, string> = {
+  client:   '#3B82F6',
+  partner:  '#10B981',
+  prospect: '#F59E0B',
+};
 
+// ─── Style carte gratuit sans clé API ────────────────────────────────────────
+const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+
+// ─── GeoJSON des points mockData ─────────────────────────────────────────────
+const miniMapGeojson: GeoJSON.FeatureCollection = {
+  type: 'FeatureCollection',
+  features: mockDataPoints.map(d => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [d.lng, d.lat] }, // ⚠️ lng avant lat
+    properties: { color: TYPE_COLORS[d.type] ?? '#6B7280' },
+  })),
+};
+
+// ─── Mini carte MapLibre ─────────────────────────────────────────────────────
+function MiniMap({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+  const mapRef = useRef<MapRef>(null);
+
+  // Clic sur la carte → navigation vers la page carte complète
+  const handleClick = useCallback((_e: MapLayerMouseEvent) => {
+    onNavigate('map');
+  }, [onNavigate]);
+
+  return (
+    <div className="w-full h-full rounded-lg overflow-hidden relative cursor-pointer" onClick={() => onNavigate('map')}>
+      <Map
+        ref={mapRef}
+        initialViewState={{ longitude: 47.537, latitude: -18.910, zoom: 11 }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={MAP_STYLE}
+        interactive={false}          // Pas de drag/zoom sur la mini-carte
+        attributionControl={false}   // Masque l'attribution pour économiser la place
+      >
+        <Source id="mini-points" type="geojson" data={miniMapGeojson}>
+          {/* Halo blanc */}
+          <Layer
+            id="mini-halo"
+            type="circle"
+            paint={{
+              'circle-radius': 7,
+              'circle-color': 'white',
+              'circle-opacity': 0.95,
+            }}
+          />
+          {/* Point coloré */}
+          <Layer
+            id="mini-points-layer"
+            type="circle"
+            paint={{
+              'circle-radius': 5,
+              'circle-color': ['get', 'color'],
+              'circle-opacity': 0.9,
+            }}
+          />
+        </Source>
+      </Map>
+
+      {/* Légende superposée */}
+      <div className="absolute top-2 left-2 flex gap-1 z-10 pointer-events-none">
+        {[
+          { c: '#3B82F6', l: 'Clients' },
+          { c: '#10B981', l: 'Partenaires' },
+          { c: '#F59E0B', l: 'Prospects' },
+        ].map((leg, i) => (
+          <div key={i} className="flex items-center gap-1 bg-black/50 px-1.5 py-0.5 rounded text-[9px] text-white backdrop-blur-sm">
+            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: leg.c }} />
+            {leg.l}
+          </div>
+        ))}
+      </div>
+
+      {/* Overlay hover pour indiquer que c'est cliquable */}
+      <div className="absolute inset-0 bg-primary-500/0 hover:bg-primary-500/5 transition-colors duration-200 z-10" />
+    </div>
+  );
+}
+
+// ─── Page Dashboard ───────────────────────────────────────────────────────────
 export default function DashboardPage({ onNavigate }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-fade-in">
@@ -69,10 +111,10 @@ export default function DashboardPage({ onNavigate }: Props) {
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard label="Points Actifs" value="416" change={8.3} icon={<MapPin size={18} />} color="blue" subtitle="sur 5 zones" />
-        <KPICard label="Zones Couvertes" value="5 / 5" change={0} icon={<TrendingUp size={18} />} color="green" subtitle="Couverture 74%" />
-        <KPICard label="Score Moyen" value="68 / 100" change={3.1} icon={<Users size={18} />} color="yellow" subtitle="+3.1 pts ce mois" />
-        <KPICard label="Alertes Actives" value="2" change={-33.3} icon={<AlertTriangle size={18} />} color="red" subtitle="1 critique, 1 haute" />
+        <KPICard label="Points Actifs"    value="416"      change={8.3}   icon={<MapPin size={18} />}       color="blue"   subtitle="sur 5 zones" />
+        <KPICard label="Zones Couvertes"  value="5 / 5"    change={0}     icon={<TrendingUp size={18} />}   color="green"  subtitle="Couverture 74%" />
+        <KPICard label="Score Moyen"      value="68 / 100" change={3.1}   icon={<Users size={18} />}        color="yellow" subtitle="+3.1 pts ce mois" />
+        <KPICard label="Alertes Actives"  value="2"        change={-33.3} icon={<AlertTriangle size={18} />} color="red"   subtitle="1 critique, 1 haute" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -89,9 +131,9 @@ export default function DashboardPage({ onNavigate }: Props) {
           <LineChart data={revenueTimeline.map(d => ({ label: d.month, value: d.value }))} height={140} color="#2563EB" />
           <div className="mt-3 grid grid-cols-3 gap-3">
             {[
-              { l: 'Total Avril', v: '571 K MGA', c: 'text-neutral-900 dark:text-dark-text' },
-              { l: 'Croissance MoM', v: '+14.7%', c: 'text-success' },
-              { l: 'Prévision Mai', v: '~610 K MGA', c: 'text-neutral-500 dark:text-dark-muted' },
+              { l: 'Total Avril',    v: '571 K MGA',   c: 'text-neutral-900 dark:text-dark-text' },
+              { l: 'Croissance MoM', v: '+14.7%',      c: 'text-success' },
+              { l: 'Prévision Mai',  v: '~610 K MGA',  c: 'text-neutral-500 dark:text-dark-muted' },
             ].map((s, i) => (
               <div key={i} className="bg-neutral-50 dark:bg-dark-bg rounded-lg p-3 text-center">
                 <p className={`text-base font-bold ${s.c}`}>{s.v}</p>
@@ -101,6 +143,7 @@ export default function DashboardPage({ onNavigate }: Props) {
           </div>
         </div>
 
+        {/* ── Carte Rapide — maintenant MapLibre réel ── */}
         <div className="card p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <h3 className="section-title">Carte Rapide</h3>
@@ -108,11 +151,11 @@ export default function DashboardPage({ onNavigate }: Props) {
               Explorer <ArrowUpRight size={12} />
             </button>
           </div>
-          <div className="flex-1 min-h-[140px]">
-            <MockMiniMap />
+          <div className="flex-1 min-h-[160px]">
+            <MiniMap onNavigate={onNavigate} />
           </div>
           <div className="mt-3 text-xs text-neutral-400 dark:text-dark-muted text-center">
-            9 marqueurs • 3 clusters actifs
+            {mockDataPoints.length} marqueurs &bull; Cliquer pour explorer
           </div>
         </div>
       </div>
@@ -183,7 +226,10 @@ export default function DashboardPage({ onNavigate }: Props) {
                     <div className="flex items-center gap-2">
                       <div className="w-16 bg-neutral-100 dark:bg-dark-bg rounded-full h-1.5 overflow-hidden">
                         <div className="h-full rounded-full transition-all duration-300"
-                          style={{ width: `${z.scoreValue}%`, backgroundColor: z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444' }} />
+                          style={{
+                            width: `${z.scoreValue}%`,
+                            backgroundColor: z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444'
+                          }} />
                       </div>
                       <span className={`text-xs font-semibold ${z.score === 'high' ? 'text-success' : z.score === 'medium' ? 'text-warning' : 'text-danger'}`}>
                         {z.scoreValue}

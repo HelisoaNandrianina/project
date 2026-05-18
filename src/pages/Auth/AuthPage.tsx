@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import {
-  Globe,
   Mail,
   Lock,
   User,
@@ -85,12 +84,10 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     const file = e.target.files?.[0] ?? null;
     if (!file) return;
 
-    // Vérification type
     if (!file.type.startsWith("image/")) {
       setError("Le fichier doit être une image (jpg, png, webp…).");
       return;
     }
-    // Vérification taille (max 2 Mo)
     if (file.size > 2 * 1024 * 1024) {
       setError("La photo ne doit pas dépasser 2 Mo.");
       return;
@@ -135,7 +132,6 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         data = await registerApi(firstName, lastName, email, password, roleInt, photo);
       }
 
-      // Délègue la persistance au AuthContext
       onLogin(data.access_token, data.user);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue.");
@@ -194,16 +190,25 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           ))}
         </div>
 
-        {/* Logo */}
+        {/* ── LOGOS (panneau gauche desktop) ── */}
         <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary-500 flex items-center justify-center">
-            <Globe size={20} className="text-white" />
+          {/* Logo GeoPulse horizontal — fond blanc arrondi pour visibilité sur fond sombre */}
+          <div className="bg-white rounded-xl px-3 py-1.5 flex items-center">
+            <img
+              src="/logos/geoPulse-horizontal.png"
+              alt="GeoPulse"
+              className="h-8 object-contain"
+            />
           </div>
-          <div>
-            <p className="text-white font-bold text-lg leading-none">GeoPulse</p>
-            <p className="text-blue-300 text-xs leading-none mt-0.5">
-              Data Intelligence Platform
-            </p>
+          {/* Séparateur vertical */}
+          <div className="w-px h-8 bg-white/30" />
+          {/* Logo ISPM — fond blanc arrondi pour visibilité sur fond sombre */}
+          <div className="bg-white rounded-xl px-3 py-1.5 flex items-center">
+            <img
+              src="/logos/ispm-logo.png"
+              alt="ISPM"
+              className="h-8 object-contain"
+            />
           </div>
         </div>
 
@@ -256,14 +261,20 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
       {/* ── RIGHT PANEL ──────────────────────── */}
       <div className="flex-1 flex items-center justify-center p-8 bg-neutral-50 dark:bg-dark-bg">
         <div className="w-full max-w-md animate-fade-in">
-          {/* Mobile logo */}
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center">
-              <Globe size={16} className="text-white" />
-            </div>
-            <span className="font-bold text-neutral-900 dark:text-dark-text">
-              GeoIntel
-            </span>
+
+          {/* ── LOGOS mobile (affiché uniquement sur petits écrans) ── */}
+          <div className="lg:hidden flex items-center gap-3 mb-8">
+            <img
+              src="/logos/geoPulse-horizontal.png"
+              alt="GeoPulse"
+              className="h-8 object-contain"
+            />
+            <div className="w-px h-6 bg-neutral-200 dark:bg-dark-border" />
+            <img
+              src="/logos/ispm-logo.png"
+              alt="ISPM"
+              className="h-7 object-contain"
+            />
           </div>
 
           {/* Header */}
@@ -273,8 +284,8 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             </h1>
             <p className="text-sm text-neutral-500 dark:text-dark-muted mt-1">
               {mode === "login"
-                ? "Accédez à votre espace GeoIntel"
-                : "Rejoignez la plateforme GeoIntel"}
+                ? "Accédez à votre espace GeoPulse"
+                : "Rejoignez la plateforme GeoPulse"}
             </p>
           </div>
 
@@ -301,7 +312,6 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             {/* ── PHOTO DE PROFIL — register only ── */}
             {mode === "register" && (
               <div className="flex flex-col items-center gap-2 pb-2">
-                {/* Avatar / aperçu */}
                 <div className="relative group">
                   <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-dashed border-neutral-300 dark:border-dark-border bg-neutral-100 dark:bg-dark-card flex items-center justify-center transition-all group-hover:border-primary-400">
                     {photoPreview ? (
@@ -315,7 +325,6 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                     )}
                   </div>
 
-                  {/* Bouton caméra superposé */}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -326,7 +335,6 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                   </button>
                 </div>
 
-                {/* Input caché */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -335,7 +343,6 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                   onChange={handlePhotoChange}
                 />
 
-                {/* Texte d'action */}
                 {photoPreview ? (
                   <div className="flex items-center gap-3">
                     <button

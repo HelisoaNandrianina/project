@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Map, Database, BarChart3, Brain, TrendingUp,
-  FileText, Bell, Settings, Globe, ChevronLeft, ChevronRight, LogOut,
+  FileText, Bell, Settings, ChevronLeft, ChevronRight, LogOut,
 } from 'lucide-react';
 import type { PageId } from '../../types';
 import type { UserOut } from '../../services/auth';
@@ -46,14 +46,32 @@ export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, u
       `}
     >
       {/* Logo */}
-      <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-neutral-200 dark:border-dark-border ${collapsed ? 'justify-center px-0' : ''}`}>
-        <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center shrink-0">
-          <Globe size={16} className="text-white" />
-        </div>
-        {!collapsed && (
-          <div>
-            <p className="text-sm font-bold text-neutral-900 dark:text-dark-text leading-none">GeoPulse</p>
-            <p className="text-xs text-neutral-400 dark:text-dark-muted leading-none mt-0.5">Data Platform</p>
+      <div className={`flex items-center border-b border-neutral-200 dark:border-dark-border transition-all duration-300 ${collapsed ? 'justify-center px-2 py-4' : 'px-3 py-3'}`}>
+        {collapsed ? (
+          /* Sidebar réduite → logo vertical / icône carré GeoPulse */
+          <img
+            src="/logos/geoPulse-vertical.png"
+            alt="GeoPulse"
+            className="w-9 h-9 object-contain"
+            title="GeoPulse"
+          />
+        ) : (
+          /* Sidebar étendue → logo horizontal GeoPulse + séparateur + logo ISPM */
+          <div className="flex items-center justify-between w-full gap-2">
+            <img
+              src="/logos/geoPulse-horizontal.png"
+              alt="GeoPulse"
+              className="h-8 object-contain flex-shrink-0"
+            />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="w-px h-6 bg-neutral-200 dark:bg-dark-border" />
+              <img
+                src="/logos/ispm-logo.png"
+                alt="ISPM"
+                className="h-7 object-contain"
+                title="ISPM"
+              />
+            </div>
           </div>
         )}
       </div>
