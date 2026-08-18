@@ -10,7 +10,8 @@ export type PageId =
   | 'dashboards'
   | 'reporting'
   | 'notifications'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 export type ZoneScore = 'high' | 'medium' | 'low';
 

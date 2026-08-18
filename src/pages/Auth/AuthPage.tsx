@@ -15,6 +15,7 @@ import {
 import type { UserRole } from "../../types";
 import { loginApi, registerApi } from "../../services/auth";
 import type { UserOut } from "../../services/auth";
+import ForgotPasswordForm from "./ForgotPasswordForm";
 
 
 // TYPES
@@ -63,6 +64,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [selectedRole, setSelectedRole] = useState<UserRole>("analyst");
   const [showPwd, setShowPwd] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   // Form fields
   const [firstName, setFirstName] = useState("");
@@ -500,6 +502,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 </label>
                 <button
                   type="button"
+                  onClick={() => setShowForgotPassword(true)}
                   className="text-xs text-primary-500 hover:text-primary-600 font-medium"
                 >
                   Mot de passe oublié ?
@@ -549,6 +552,10 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           </p>
         </div>
       </div>
+
+      {showForgotPassword && (
+        <ForgotPasswordForm onClose={() => setShowForgotPassword(false)} />
+      )}
     </div>
   );
 }

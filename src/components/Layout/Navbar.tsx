@@ -15,6 +15,7 @@ const pageTitles: Record<PageId, string> = {
   reporting: 'Reporting',
   notifications: 'Notifications',
   settings: 'Paramètres',
+  profile: 'Mon profil',
 };
 
 const pageSubs: Partial<Record<PageId, string>> = {
@@ -126,7 +127,7 @@ export default function Navbar({ activePage, theme, onThemeToggle, unreadCount, 
               {/* Menu items */}
               <div className="p-1">
                 <button
-                  onClick={() => { setDropdownOpen(false); onNavigate('settings'); }}
+                  onClick={() => { setDropdownOpen(false); onNavigate('profile'); }}
                   className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-neutral-700 dark:text-dark-text hover:bg-neutral-50 dark:hover:bg-dark-border rounded-lg transition-colors"
                 >
                   <User size={13} />
