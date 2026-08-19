@@ -1,12 +1,15 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import Map, { Source, Layer, Popup, NavigationControl } from 'react-map-gl/maplibre';
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   Filter, Search, ZoomIn, ZoomOut, Maximize2, MapPin,
-  X, TrendingUp, TrendingDown, Users, DollarSign, ChevronDown,
+  X, TrendingUp, TrendingDown, Users, DollarSign, ChevronDown, AlertCircle, Flame,
 } from 'lucide-react';
-import { mockDataPoints } from '../../data/mockData';
+import { listPointsApi } from '../../services/datapoints';
+import { listZonesApi } from '../../services/zones';
+import { getDensityApi } from '../../services/analysis';
+import type { DensityPoint } from '../../services/analysis';
 import type { DataPoint } from '../../types';
 
 // ─── Couleurs par type ────────────────────────────────────────────────────────
@@ -22,6 +25,12 @@ const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 export default function MapPage() {
   const mapRef = useRef<MapRef>(null);
 
+  const [points, setPoints] = useState<DataPoint[]>([]);
+  const [pointsLoading, setPointsLoading] = useState(false);
+  const [pointsError, setPointsError] = useState('');
+
+  const [zoneNames, setZoneNames] = useState<string[]>([]);
+
   const [selectedPoint, setSelectedPoint] = useState<DataPoint | null>(null);
   const [filterType,  setFilterType]  = useState('all');
   const [filterZone,  setFilterZone]  = useState('all');
@@ -33,8 +42,45 @@ export default function MapPage() {
     zoom:      12,
   });
 
+  const [heatmapOn, setHeatmapOn] = useState(false);
+  const [density, setDensity] = useState<DensityPoint[]>([]);
+  const [densityLoading, setDensityLoading] = useState(false);
+  const [densityError, setDensityError] = useState('');
+
+  useEffect(() => {
+    setPointsLoading(true);
+    setPointsError('');
+    // ⚠️ page_size est plafonné à 100 côté backend : au-delà de ce volume, il
+    // faudra une vraie pagination ou un endpoint dédié "tous les points visibles".
+    listPointsApi({ page_size: 100 })
+      .then(res => setPoints(res.items))
+      .catch(err => setPointsError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setPointsLoading(false));
+
+    listZonesApi()
+      .then(zones => setZoneNames(zones.map(z => z.name)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!heatmapOn) {
+      setDensity([]);
+      setDensityError('');
+      return;
+    }
+    setDensityLoading(true);
+    setDensityError('');
+    getDensityApi({
+      zone: filterZone !== 'all' ? filterZone : undefined,
+      type: filterType !== 'all' ? filterType : undefined,
+    })
+      .then(setDensity)
+      .catch(err => setDensityError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setDensityLoading(false));
+  }, [heatmapOn, filterZone, filterType]);
+
   // ─── Filtrage identique à l'original ───────────────────────────────────────
-  const filtered = mockDataPoints.filter(d =>
+  const filtered = points.filter(d =>
     (filterType === 'all' || d.type === filterType) &&
     (filterZone === 'all' || d.zone === filterZone) &&
     d.score >= filterScore &&
@@ -61,9 +107,19 @@ export default function MapPage() {
         revenue: d.revenue,
         lat:     d.lat,
         lng:     d.lng,
-        createdAt: (d as any).createdAt ?? '',
+        createdAt: d.createdAt ?? '',
         color:   TYPE_COLORS[d.type] ?? '#6B7280',
       },
+    })),
+  };
+
+  // ─── Conversion en GeoJSON pour le layer heatmap ───────────────────────────
+  const densityGeojson: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: density.map(d => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [d.lng, d.lat] }, // ⚠️ lng AVANT lat
+      properties: { weight: d.weight },
     })),
   };
 
@@ -71,18 +127,18 @@ export default function MapPage() {
   const handleClick = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
     if (!feature) return;
-    const p = feature.properties as any;
+    const p = feature.properties as Record<string, string | number>;
     setSelectedPoint({
-      id:        p.id,
-      name:      p.name,
-      type:      p.type,
-      score:     p.score,
-      zone:      p.zone,
-      status:    p.status,
-      revenue:   p.revenue,
-      lat:       p.lat,
-      lng:       p.lng,
-      createdAt: p.createdAt,
+      id:        String(p.id),
+      name:      String(p.name),
+      type:      p.type as DataPoint['type'],
+      score:     Number(p.score),
+      zone:      String(p.zone),
+      status:    p.status as DataPoint['status'],
+      revenue:   Number(p.revenue),
+      lat:       Number(p.lat),
+      lng:       Number(p.lng),
+      createdAt: String(p.createdAt),
     });
   }, []);
 
@@ -135,10 +191,7 @@ export default function MapPage() {
             <label className="label">Zone</label>
             <select className="input text-xs h-8" value={filterZone} onChange={e => setFilterZone(e.target.value)}>
               <option value="all">Toutes les zones</option>
-              <option value="Zone Nord">Zone Nord</option>
-              <option value="Zone Est">Zone Est</option>
-              <option value="Zone Ouest">Zone Ouest</option>
-              <option value="Zone Sud">Zone Sud</option>
+              {zoneNames.map(z => <option key={z} value={z}>{z}</option>)}
             </select>
           </div>
           <div>
@@ -150,7 +203,14 @@ export default function MapPage() {
             />
           </div>
         </div>
-++
+
+        {pointsError && (
+          <div className="m-4 flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <span>{pointsError}</span>
+          </div>
+        )}
+
         <div className="p-4 flex-1">
           <label className="label mb-2">Légende</label>
           {[
@@ -164,9 +224,19 @@ export default function MapPage() {
             </div>
           ))}
           <div className="mt-4">
-            <label className="label mb-1">Points affichés</label>
-            <div className="text-2xl font-bold text-neutral-900 dark:text-dark-text">{filtered.length}</div>
-            <div className="text-xs text-neutral-400 dark:text-dark-muted">sur {mockDataPoints.length} au total</div>
+            <label className="label mb-1">{heatmapOn ? 'Points heatmap' : 'Points affichés'}</label>
+            <div className="text-2xl font-bold text-neutral-900 dark:text-dark-text">
+              {heatmapOn ? (densityLoading ? '…' : density.length) : (pointsLoading ? '…' : filtered.length)}
+            </div>
+            <div className="text-xs text-neutral-400 dark:text-dark-muted">
+              {heatmapOn ? 'via /api/analysis/density' : `sur ${points.length} au total`}
+            </div>
+            {heatmapOn && densityError && (
+              <div className="mt-2 flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-2">
+                <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                <span>{densityError}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -179,38 +249,63 @@ export default function MapPage() {
           onMove={e => setViewState(e.viewState)}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLE}
-          interactiveLayerIds={['points-layer']}
-          onClick={handleClick}
-          onMouseEnter={onMouseEnter}
-          onMouseLeave={onMouseLeave}
+          interactiveLayerIds={heatmapOn ? [] : ['points-layer']}
+          onClick={heatmapOn ? undefined : handleClick}
+          onMouseEnter={heatmapOn ? undefined : onMouseEnter}
+          onMouseLeave={heatmapOn ? undefined : onMouseLeave}
         >
-          {/* Source GeoJSON + calques */}
-          <Source id="points" type="geojson" data={geojson}>
-            {/* Halo blanc autour de chaque point */}
-            <Layer
-              id="points-halo"
-              type="circle"
-              paint={{
-                'circle-radius': 11,
-                'circle-color': 'white',
-                'circle-opacity': 0.95,
-              }}
-            />
-            {/* Point coloré cliquable */}
-            <Layer
-              id="points-layer"
-              type="circle"
-              paint={{
-                'circle-radius': 8,
-                'circle-color': ['get', 'color'],
-                'circle-opacity': 0.9,
-                'circle-stroke-width': 0,
-              }}
-            />
-          </Source>
+          {/* Les deux calques (points / heatmap) ne s'affichent jamais en même temps,
+              pour rester lisible. */}
+          {heatmapOn ? (
+            <Source id="density" type="geojson" data={densityGeojson}>
+              <Layer
+                id="density-heatmap"
+                type="heatmap"
+                paint={{
+                  'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 100, 1],
+                  'heatmap-intensity': 1,
+                  'heatmap-color': [
+                    'interpolate', ['linear'], ['heatmap-density'],
+                    0, 'rgba(33,102,172,0)',
+                    0.2, 'rgb(103,169,207)',
+                    0.4, 'rgb(209,229,240)',
+                    0.6, 'rgb(253,219,199)',
+                    0.8, 'rgb(239,138,98)',
+                    1, 'rgb(178,24,43)',
+                  ],
+                  'heatmap-radius': 25,
+                  'heatmap-opacity': 0.8,
+                }}
+              />
+            </Source>
+          ) : (
+            <Source id="points" type="geojson" data={geojson}>
+              {/* Halo blanc autour de chaque point */}
+              <Layer
+                id="points-halo"
+                type="circle"
+                paint={{
+                  'circle-radius': 11,
+                  'circle-color': 'white',
+                  'circle-opacity': 0.95,
+                }}
+              />
+              {/* Point coloré cliquable */}
+              <Layer
+                id="points-layer"
+                type="circle"
+                paint={{
+                  'circle-radius': 8,
+                  'circle-color': ['get', 'color'],
+                  'circle-opacity': 0.9,
+                  'circle-stroke-width': 0,
+                }}
+              />
+            </Source>
+          )}
 
           {/* Popup sur point sélectionné */}
-          {selectedPoint && (
+          {selectedPoint && !heatmapOn && (
             <Popup
               longitude={selectedPoint.lng}
               latitude={selectedPoint.lat}
@@ -227,8 +322,17 @@ export default function MapPage() {
           )}
         </Map>
 
-        {/* Boutons zoom custom (identiques à l'original) */}
+        {/* Boutons zoom + toggle heatmap */}
         <div className="absolute top-3 right-3 flex flex-col gap-1.5 z-10">
+          <button
+            onClick={() => setHeatmapOn(v => !v)}
+            title="Basculer la heatmap de densité"
+            className={`w-8 h-8 flex items-center justify-center rounded-lg backdrop-blur-sm transition-all ${
+              heatmapOn ? 'bg-primary-500 text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+            }`}
+          >
+            <Flame size={14} />
+          </button>
           {[
             { icon: <ZoomIn size={14} />,    action: () => setViewState(v => ({ ...v, zoom: Math.min(v.zoom + 1, 20) })) },
             { icon: <ZoomOut size={14} />,   action: () => setViewState(v => ({ ...v, zoom: Math.max(v.zoom - 1, 1) })) },

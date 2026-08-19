@@ -1,12 +1,15 @@
-import { useRef, useCallback } from 'react';
-import { MapPin, Users, TrendingUp, AlertTriangle, Activity, ArrowUpRight, Clock } from 'lucide-react';
+import { useRef, useCallback, useState, useEffect } from 'react';
+import { MapPin, Users, TrendingUp, AlertTriangle, Activity, ArrowUpRight, Clock, AlertCircle } from 'lucide-react';
 import Map, { Source, Layer } from 'react-map-gl/maplibre';
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import KPICard from '../../components/UI/KPICard';
 import { BarChart, LineChart, DonutChart } from '../../components/UI/Charts';
-import { mockZones, revenueTimeline, zoneBarData, segmentData, mockNotifications, mockDataPoints } from '../../data/mockData';
-import type { PageId } from '../../types';
+import { listPointsApi } from '../../services/datapoints';
+import { listZonesApi } from '../../services/zones';
+import { getKpisApi, getRevenueEvolutionApi, getSegmentationApi, getActivityApi } from '../../services/dashboard';
+import type { DashboardKpis, RevenuePoint, SegmentationItem, ActivityItem } from '../../services/dashboard';
+import type { DataPoint, PageId, Zone } from '../../types';
 
 interface Props { onNavigate: (page: PageId) => void; }
 
@@ -17,22 +20,32 @@ const TYPE_COLORS: Record<string, string> = {
   prospect: '#F59E0B',
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  client:   'Clients',
+  partner:  'Partenaires',
+  prospect: 'Prospects',
+};
+
 // ─── Style carte gratuit sans clé API ────────────────────────────────────────
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
-// ─── GeoJSON des points mockData ─────────────────────────────────────────────
-const miniMapGeojson: GeoJSON.FeatureCollection = {
-  type: 'FeatureCollection',
-  features: mockDataPoints.map(d => ({
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: [d.lng, d.lat] }, // ⚠️ lng avant lat
-    properties: { color: TYPE_COLORS[d.type] ?? '#6B7280' },
-  })),
-};
+function formatMonthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+}
 
 // ─── Mini carte MapLibre ─────────────────────────────────────────────────────
-function MiniMap({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+function MiniMap({ points, onNavigate }: { points: DataPoint[]; onNavigate: (page: PageId) => void }) {
   const mapRef = useRef<MapRef>(null);
+
+  const miniMapGeojson: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: points.map(d => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [d.lng, d.lat] }, // ⚠️ lng avant lat
+      properties: { color: TYPE_COLORS[d.type] ?? '#6B7280' },
+    })),
+  };
 
   // Clic sur la carte → navigation vers la page carte complète
   const handleClick = useCallback((_e: MapLayerMouseEvent) => {
@@ -95,6 +108,88 @@ function MiniMap({ onNavigate }: { onNavigate: (page: PageId) => void }) {
 
 // ─── Page Dashboard ───────────────────────────────────────────────────────────
 export default function DashboardPage({ onNavigate }: Props) {
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [zonesError, setZonesError] = useState('');
+
+  const [miniMapPoints, setMiniMapPoints] = useState<DataPoint[]>([]);
+  const [miniMapError, setMiniMapError] = useState('');
+
+  const [kpis, setKpis] = useState<DashboardKpis | null>(null);
+  const [kpisLoading, setKpisLoading] = useState(false);
+  const [kpisError, setKpisError] = useState('');
+
+  const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
+  const [revenueLoading, setRevenueLoading] = useState(false);
+  const [revenueError, setRevenueError] = useState('');
+
+  const [segmentation, setSegmentation] = useState<SegmentationItem[]>([]);
+  const [segLoading, setSegLoading] = useState(false);
+  const [segError, setSegError] = useState('');
+
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+
+  useEffect(() => {
+    setZonesLoading(true);
+    setZonesError('');
+    listZonesApi()
+      .then(setZones)
+      .catch(err => setZonesError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setZonesLoading(false));
+
+    // ⚠️ page_size est plafonné à 100 côté backend : au-delà de ce volume, il
+    // faudra une vraie pagination ou un endpoint dédié "tous les points visibles".
+    listPointsApi({ page_size: 100 })
+      .then(res => setMiniMapPoints(res.items))
+      .catch(err => setMiniMapError(err instanceof Error ? err.message : 'Erreur serveur'));
+
+    setKpisLoading(true);
+    setKpisError('');
+    getKpisApi()
+      .then(setKpis)
+      .catch(err => setKpisError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setKpisLoading(false));
+
+    setRevenueLoading(true);
+    setRevenueError('');
+    getRevenueEvolutionApi(7)
+      .then(setRevenue)
+      .catch(err => setRevenueError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setRevenueLoading(false));
+
+    setSegLoading(true);
+    setSegError('');
+    getSegmentationApi()
+      .then(setSegmentation)
+      .catch(err => setSegError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setSegLoading(false));
+
+    setActivityLoading(true);
+    setActivityError('');
+    getActivityApi(4)
+      .then(setActivity)
+      .catch(err => setActivityError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setActivityLoading(false));
+  }, []);
+
+  const zoneBarData = zones.map(z => ({ zone: z.name, value: z.scoreValue }));
+
+  const lastRevenuePoint = revenue.length > 0 ? revenue[revenue.length - 1] : null;
+  const prevRevenuePoint = revenue.length > 1 ? revenue[revenue.length - 2] : null;
+  const momGrowth =
+    lastRevenuePoint && prevRevenuePoint && prevRevenuePoint.revenue !== 0
+      ? ((lastRevenuePoint.revenue - prevRevenuePoint.revenue) / prevRevenuePoint.revenue) * 100
+      : null;
+
+  const segmentTotal = segmentation.reduce((sum, s) => sum + s.count, 0);
+  const segmentationDonutData = segmentation.map(s => ({
+    label: TYPE_LABELS[s.type] ?? s.type,
+    value: segmentTotal > 0 ? Math.round((s.count / segmentTotal) * 100) : 0,
+    color: TYPE_COLORS[s.type] ?? '#6B7280',
+  }));
+
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -110,11 +205,39 @@ export default function DashboardPage({ onNavigate }: Props) {
         </div>
       </div>
 
+      {kpisError && (
+        <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{kpisError}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard label="Points Actifs"    value="416"      change={8.3}   icon={<MapPin size={18} />}       color="blue"   subtitle="sur 5 zones" />
-        <KPICard label="Zones Couvertes"  value="5 / 5"    change={0}     icon={<TrendingUp size={18} />}   color="green"  subtitle="Couverture 74%" />
-        <KPICard label="Score Moyen"      value="68 / 100" change={3.1}   icon={<Users size={18} />}        color="yellow" subtitle="+3.1 pts ce mois" />
-        <KPICard label="Alertes Actives"  value="2"        change={-33.3} icon={<AlertTriangle size={18} />} color="red"   subtitle="1 critique, 1 haute" />
+        <KPICard
+          label="Points Actifs"
+          value={kpisLoading ? '…' : String(kpis?.active_points ?? '—')}
+          icon={<MapPin size={18} />}
+          color="blue"
+        />
+        <KPICard
+          label="Zones Couvertes"
+          value={kpisLoading ? '…' : `${kpis?.zones_count ?? '—'} / ${kpis?.zones_count ?? '—'}`}
+          icon={<TrendingUp size={18} />}
+          color="green"
+        />
+        <KPICard
+          label="Score Moyen"
+          value={kpisLoading ? '…' : `${kpis?.avg_score ?? '—'} / 100`}
+          icon={<Users size={18} />}
+          color="yellow"
+        />
+        <KPICard
+          label="Alertes Actives"
+          value={kpisLoading ? '…' : String(kpis?.active_alerts ?? 0)}
+          icon={<AlertTriangle size={18} />}
+          color="red"
+          title="Module Notifications à venir"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -122,18 +245,37 @@ export default function DashboardPage({ onNavigate }: Props) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="section-title">Évolution du Revenu</h3>
-              <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5">7 derniers mois (en MGA)</p>
+              <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5">{revenue.length || 7} derniers mois (en MGA)</p>
             </div>
             <button onClick={() => onNavigate('dashboards')} className="text-xs text-primary-500 font-medium hover:text-primary-600 flex items-center gap-1">
               Voir plus <ArrowUpRight size={12} />
             </button>
           </div>
-          <LineChart data={revenueTimeline.map(d => ({ label: d.month, value: d.value }))} height={140} color="#2563EB" />
-          <div className="mt-3 grid grid-cols-3 gap-3">
+
+          {revenueError ? (
+            <div className="h-[140px] flex items-center justify-center gap-1.5 text-xs text-red-500 dark:text-red-400">
+              <AlertCircle size={12} />{revenueError}
+            </div>
+          ) : revenueLoading ? (
+            <div className="h-[140px] flex items-center justify-center text-xs text-neutral-400 dark:text-dark-muted">Chargement…</div>
+          ) : revenue.length > 0 ? (
+            <LineChart data={revenue.map(r => ({ label: r.month, value: r.revenue }))} height={140} color="#2563EB" />
+          ) : (
+            <div className="h-[140px] flex items-center justify-center text-xs text-neutral-400 dark:text-dark-muted">Aucune donnée</div>
+          )}
+
+          <div className="mt-3 grid grid-cols-2 gap-3">
             {[
-              { l: 'Total Avril',    v: '571 K MGA',   c: 'text-neutral-900 dark:text-dark-text' },
-              { l: 'Croissance MoM', v: '+14.7%',      c: 'text-success' },
-              { l: 'Prévision Mai',  v: '~610 K MGA',  c: 'text-neutral-500 dark:text-dark-muted' },
+              {
+                l: lastRevenuePoint ? `Total ${formatMonthLabel(lastRevenuePoint.month)}` : 'Total',
+                v: lastRevenuePoint ? `${Math.round(lastRevenuePoint.revenue / 1000)} K MGA` : '—',
+                c: 'text-neutral-900 dark:text-dark-text',
+              },
+              {
+                l: 'Croissance MoM',
+                v: momGrowth !== null ? `${momGrowth >= 0 ? '+' : ''}${momGrowth.toFixed(1)}%` : '—',
+                c: momGrowth === null ? 'text-neutral-400 dark:text-dark-muted' : momGrowth >= 0 ? 'text-success' : 'text-danger',
+              },
             ].map((s, i) => (
               <div key={i} className="bg-neutral-50 dark:bg-dark-bg rounded-lg p-3 text-center">
                 <p className={`text-base font-bold ${s.c}`}>{s.v}</p>
@@ -152,11 +294,17 @@ export default function DashboardPage({ onNavigate }: Props) {
             </button>
           </div>
           <div className="flex-1 min-h-[160px]">
-            <MiniMap onNavigate={onNavigate} />
+            <MiniMap points={miniMapPoints} onNavigate={onNavigate} />
           </div>
-          <div className="mt-3 text-xs text-neutral-400 dark:text-dark-muted text-center">
-            {mockDataPoints.length} marqueurs &bull; Cliquer pour explorer
-          </div>
+          {miniMapError ? (
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-red-500 dark:text-red-400">
+              <AlertCircle size={12} />{miniMapError}
+            </div>
+          ) : (
+            <div className="mt-3 text-xs text-neutral-400 dark:text-dark-muted text-center">
+              {miniMapPoints.length} marqueurs &bull; Cliquer pour explorer
+            </div>
+          )}
         </div>
       </div>
 
@@ -175,27 +323,47 @@ export default function DashboardPage({ onNavigate }: Props) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="section-title">Segmentation</h3>
           </div>
-          <DonutChart data={segmentData} size={100} />
+          {segError ? (
+            <div className="flex items-center gap-1.5 text-xs text-red-500 dark:text-red-400">
+              <AlertCircle size={12} />{segError}
+            </div>
+          ) : segLoading ? (
+            <div className="text-xs text-neutral-400 dark:text-dark-muted">Chargement…</div>
+          ) : segmentationDonutData.length > 0 ? (
+            <DonutChart data={segmentationDonutData} size={100} />
+          ) : (
+            <div className="text-xs text-neutral-400 dark:text-dark-muted">Aucune donnée</div>
+          )}
         </div>
 
         <div className="card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="section-title">Activité Récente</h3>
           </div>
-          <div className="space-y-3">
-            {mockNotifications.slice(0, 4).map(n => (
-              <div key={n.id} className="flex items-start gap-2.5">
-                <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${n.priority === 'high' ? 'bg-danger' : n.priority === 'medium' ? 'bg-warning' : 'bg-success'}`} />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-neutral-800 dark:text-dark-text truncate">{n.title}</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <Clock size={10} className="text-neutral-400 shrink-0" />
-                    <span className="text-xs text-neutral-400 dark:text-dark-muted">{n.timestamp.split(' ')[1]}</span>
+          {activityError ? (
+            <div className="flex items-center gap-1.5 text-xs text-red-500 dark:text-red-400">
+              <AlertCircle size={12} />{activityError}
+            </div>
+          ) : activityLoading ? (
+            <div className="text-xs text-neutral-400 dark:text-dark-muted">Chargement…</div>
+          ) : (
+            <div className="space-y-3">
+              {activity.map((item, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${item.type === 'sync' ? 'bg-primary-500' : 'bg-success'}`} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-neutral-800 dark:text-dark-text truncate">{item.message}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Clock size={10} className="text-neutral-400 shrink-0" />
+                      <span className="text-xs text-neutral-400 dark:text-dark-muted">
+                        {new Date(item.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
           <button onClick={() => onNavigate('notifications')} className="mt-3 text-xs text-primary-500 hover:text-primary-600 font-medium flex items-center gap-1">
             Toutes les notifications <ArrowUpRight size={12} />
           </button>
@@ -209,6 +377,12 @@ export default function DashboardPage({ onNavigate }: Props) {
             Aide décision <ArrowUpRight size={12} />
           </button>
         </div>
+        {zonesError && (
+          <div className="mb-3 flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <span>{zonesError}</span>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -219,7 +393,9 @@ export default function DashboardPage({ onNavigate }: Props) {
               </tr>
             </thead>
             <tbody>
-              {mockZones.map(z => (
+              {zonesLoading ? (
+                <tr><td colSpan={6} className="table-td text-center text-neutral-400 dark:text-dark-muted py-6">Chargement…</td></tr>
+              ) : zones.map(z => (
                 <tr key={z.id} className="hover:bg-neutral-50 dark:hover:bg-dark-bg/50 transition-colors">
                   <td className="table-td font-medium">{z.name}</td>
                   <td className="table-td">

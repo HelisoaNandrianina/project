@@ -3,10 +3,11 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 interface KPICardProps {
   label: string;
   value: string;
-  change: number;
+  change?: number;
   icon: React.ReactNode;
   color: 'blue' | 'green' | 'yellow' | 'red';
   subtitle?: string;
+  title?: string;
 }
 
 const colorMap = {
@@ -16,12 +17,12 @@ const colorMap = {
   red: { bg: 'bg-red-50 dark:bg-red-900/20', icon: 'text-danger', border: 'border-red-100 dark:border-red-800/30' },
 };
 
-export default function KPICard({ label, value, change, icon, color, subtitle }: KPICardProps) {
+export default function KPICard({ label, value, change, icon, color, subtitle, title }: KPICardProps) {
   const c = colorMap[color];
-  const positive = change >= 0;
+  const positive = (change ?? 0) >= 0;
 
   return (
-    <div className="card card-hover p-5">
+    <div className="card card-hover p-5" title={title}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-neutral-500 dark:text-dark-muted uppercase tracking-wide mb-1">{label}</p>
@@ -32,17 +33,19 @@ export default function KPICard({ label, value, change, icon, color, subtitle }:
           {icon}
         </div>
       </div>
-      <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-dark-border flex items-center gap-1">
-        {positive ? (
-          <TrendingUp size={13} className="text-success shrink-0" />
-        ) : (
-          <TrendingDown size={13} className="text-danger shrink-0" />
-        )}
-        <span className={`text-xs font-semibold ${positive ? 'text-success' : 'text-danger'}`}>
-          {positive ? '+' : ''}{change}%
-        </span>
-        <span className="text-xs text-neutral-400 dark:text-dark-muted">vs mois précédent</span>
-      </div>
+      {change !== undefined && (
+        <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-dark-border flex items-center gap-1">
+          {positive ? (
+            <TrendingUp size={13} className="text-success shrink-0" />
+          ) : (
+            <TrendingDown size={13} className="text-danger shrink-0" />
+          )}
+          <span className={`text-xs font-semibold ${positive ? 'text-success' : 'text-danger'}`}>
+            {positive ? '+' : ''}{change}%
+          </span>
+          <span className="text-xs text-neutral-400 dark:text-dark-muted">vs mois précédent</span>
+        </div>
+      )}
     </div>
   );
 }

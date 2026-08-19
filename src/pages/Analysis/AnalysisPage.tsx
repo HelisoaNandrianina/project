@@ -1,9 +1,34 @@
-import { useState } from 'react';
-import { BarChart3, Target, GitBranch, Radio } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { BarChart3, Target, GitBranch, Radio, AlertCircle } from 'lucide-react';
 import { BarChart, LineChart, DonutChart } from '../../components/UI/Charts';
-import { mockZones, segmentData } from '../../data/mockData';
+import { listZonesApi } from '../../services/zones';
+import { listPointsApi } from '../../services/datapoints';
+import { getSegmentationApi } from '../../services/dashboard';
+import type { SegmentationItem } from '../../services/dashboard';
+import { computeDistanceApi } from '../../services/analysis';
+import type { DistanceResult } from '../../services/analysis';
+import type { DataPoint, Zone } from '../../types';
 
 type Tab = 'density' | 'segmentation' | 'distance' | 'coverage';
+
+const TYPE_COLORS: Record<string, string> = {
+  client:   '#3B82F6',
+  partner:  '#10B981',
+  prospect: '#F59E0B',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  client:   'Clients',
+  partner:  'Partenaires',
+  prospect: 'Prospects',
+};
+
+// ⚠️ Badge visuel pour signaler les éléments qu'aucune API actuelle ne peut alimenter.
+const DemoBadge = () => (
+  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-200 text-neutral-500 dark:bg-dark-border dark:text-dark-muted align-middle">
+    Démo
+  </span>
+);
 
 const HeatmapMockSVG = () => (
   <svg viewBox="0 0 300 160" className="w-full h-full">
@@ -100,6 +125,64 @@ const tabs: { id: Tab; label: string; icon: React.FC<{ size?: number; className?
 export default function AnalysisPage() {
   const [activeTab, setActiveTab] = useState<Tab>('density');
 
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [zonesError, setZonesError] = useState('');
+
+  const [segmentation, setSegmentation] = useState<SegmentationItem[]>([]);
+  const [segLoading, setSegLoading] = useState(false);
+  const [segError, setSegError] = useState('');
+
+  const [points, setPoints] = useState<DataPoint[]>([]);
+  const [pointsError, setPointsError] = useState('');
+
+  const [originId, setOriginId] = useState('');
+  const [destinationId, setDestinationId] = useState('');
+  const [distanceResult, setDistanceResult] = useState<DistanceResult | null>(null);
+  const [distanceLoading, setDistanceLoading] = useState(false);
+  const [distanceError, setDistanceError] = useState('');
+
+  useEffect(() => {
+    setZonesLoading(true);
+    setZonesError('');
+    listZonesApi()
+      .then(setZones)
+      .catch(err => setZonesError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setZonesLoading(false));
+
+    setSegLoading(true);
+    setSegError('');
+    getSegmentationApi()
+      .then(setSegmentation)
+      .catch(err => setSegError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setSegLoading(false));
+
+    // ⚠️ page_size est plafonné à 100 côté backend : suffisant pour peupler le
+    // calculateur de distance, pas une vraie liste exhaustive des points.
+    listPointsApi({ page_size: 100 })
+      .then(res => setPoints(res.items))
+      .catch(err => setPointsError(err instanceof Error ? err.message : 'Erreur serveur'));
+  }, []);
+
+  const segmentMaxCount = Math.max(...segmentation.map(s => s.count), 1);
+  const segmentTotal = segmentation.reduce((sum, s) => sum + s.count, 0);
+  const segmentationDonutData = segmentation.map(s => ({
+    label: TYPE_LABELS[s.type] ?? s.type,
+    value: segmentTotal > 0 ? Math.round((s.count / segmentTotal) * 100) : 0,
+    color: TYPE_COLORS[s.type] ?? '#6B7280',
+  }));
+
+  function handleComputeDistance() {
+    if (!originId || !destinationId) return;
+    setDistanceLoading(true);
+    setDistanceError('');
+    setDistanceResult(null);
+    computeDistanceApi({ point_id: originId }, { point_id: destinationId })
+      .then(setDistanceResult)
+      .catch(err => setDistanceError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setDistanceLoading(false));
+  }
+
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -110,7 +193,7 @@ export default function AnalysisPage() {
         <div className="flex gap-2">
           <select className="input h-8 text-xs w-36">
             <option>Toutes les zones</option>
-            {mockZones.map(z => <option key={z.id}>{z.name}</option>)}
+            {zones.map(z => <option key={z.id}>{z.name}</option>)}
           </select>
           <select className="input h-8 text-xs w-36">
             <option>Avr 2026</option>
@@ -130,11 +213,18 @@ export default function AnalysisPage() {
         ))}
       </div>
 
+      {(zonesError || segError) && (
+        <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{zonesError || segError}</span>
+        </div>
+      )}
+
       {activeTab === 'density' && (
         <div className="space-y-4 animate-fade-in">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 card p-5">
-              <h3 className="section-title mb-1">Carte de Densité</h3>
+              <h3 className="section-title mb-1 flex items-center">Carte de Densité<DemoBadge /></h3>
               <p className="text-xs text-neutral-400 dark:text-dark-muted mb-3">Concentration des points par zone géographique</p>
               <div className="h-48 rounded-lg overflow-hidden">
                 <HeatmapMockSVG />
@@ -147,7 +237,7 @@ export default function AnalysisPage() {
               </div>
             </div>
             <div className="card p-5 space-y-3">
-              <h3 className="section-title">Métriques Densité</h3>
+              <h3 className="section-title flex items-center">Métriques Densité<DemoBadge /></h3>
               {[
                 { l: 'Points / km²', v: '3.4', c: 'text-primary-500' },
                 { l: 'Pic densité', v: 'Zone Nord', c: 'text-success' },
@@ -165,11 +255,17 @@ export default function AnalysisPage() {
 
           <div className="card p-5">
             <h3 className="section-title mb-4">Distribution par Zone</h3>
-            <BarChart data={mockZones.map(z => ({
-              label: z.name.replace('Zone ', ''),
-              value: z.pointCount,
-              color: z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444',
-            }))} height={110} />
+            {zonesLoading ? (
+              <div className="text-xs text-neutral-400 dark:text-dark-muted h-[110px] flex items-center justify-center">Chargement…</div>
+            ) : zones.length > 0 ? (
+              <BarChart data={zones.map(z => ({
+                label: z.name.replace('Zone ', ''),
+                value: z.pointCount,
+                color: z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444',
+              }))} height={110} />
+            ) : (
+              <div className="text-xs text-neutral-400 dark:text-dark-muted h-[110px] flex items-center justify-center">Aucune donnée</div>
+            )}
           </div>
         </div>
       )}
@@ -178,7 +274,7 @@ export default function AnalysisPage() {
         <div className="space-y-4 animate-fade-in">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="section-title mb-1">Segmentation Territoriale (Voronoï)</h3>
+              <h3 className="section-title mb-1 flex items-center">Segmentation Territoriale (Voronoï)<DemoBadge /></h3>
               <p className="text-xs text-neutral-400 dark:text-dark-muted mb-3">Délimitation automatique des zones d'influence</p>
               <div className="h-48 rounded-lg overflow-hidden">
                 <VoronoiMock />
@@ -186,19 +282,27 @@ export default function AnalysisPage() {
             </div>
             <div className="card p-5">
               <h3 className="section-title mb-3">Répartition des segments</h3>
-              <DonutChart data={segmentData} size={110} />
-              <div className="mt-4 space-y-2">
-                {mockZones.map(z => (
-                  <div key={z.id} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444' }} />
-                    <span className="text-xs text-neutral-600 dark:text-dark-muted flex-1">{z.name}</span>
-                    <span className="text-xs font-medium text-neutral-800 dark:text-dark-text">{z.pointCount} pts</span>
-                    <div className="w-16 bg-neutral-100 dark:bg-dark-bg rounded-full h-1.5 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${(z.pointCount / 124) * 100}%`, backgroundColor: z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444' }} />
-                    </div>
+              {segLoading ? (
+                <div className="text-xs text-neutral-400 dark:text-dark-muted">Chargement…</div>
+              ) : segmentationDonutData.length > 0 ? (
+                <>
+                  <DonutChart data={segmentationDonutData} size={110} />
+                  <div className="mt-4 space-y-2">
+                    {segmentation.map(s => (
+                      <div key={s.type} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: TYPE_COLORS[s.type] ?? '#6B7280' }} />
+                        <span className="text-xs text-neutral-600 dark:text-dark-muted flex-1">{TYPE_LABELS[s.type] ?? s.type}</span>
+                        <span className="text-xs font-medium text-neutral-800 dark:text-dark-text">{s.count} pts</span>
+                        <div className="w-16 bg-neutral-100 dark:bg-dark-bg rounded-full h-1.5 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${(s.count / segmentMaxCount) * 100}%`, backgroundColor: TYPE_COLORS[s.type] ?? '#6B7280' }} />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <div className="text-xs text-neutral-400 dark:text-dark-muted">Aucune donnée</div>
+              )}
             </div>
           </div>
         </div>
@@ -206,6 +310,57 @@ export default function AnalysisPage() {
 
       {activeTab === 'distance' && (
         <div className="space-y-4 animate-fade-in">
+          <div className="card p-5">
+            <h3 className="section-title mb-3">Calculateur de distance</h3>
+            {pointsError && (
+              <div className="mb-3 flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{pointsError}</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[160px]">
+                <label className="label">Point de départ</label>
+                <select className="input h-8 text-xs" value={originId} onChange={e => setOriginId(e.target.value)}>
+                  <option value="">Sélectionner…</option>
+                  {points.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[160px]">
+                <label className="label">Point d'arrivée</label>
+                <select className="input h-8 text-xs" value={destinationId} onChange={e => setDestinationId(e.target.value)}>
+                  <option value="">Sélectionner…</option>
+                  {points.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <button
+                className="btn-primary h-8 text-xs px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!originId || !destinationId || distanceLoading}
+                onClick={handleComputeDistance}
+              >
+                {distanceLoading ? 'Calcul…' : 'Calculer'}
+              </button>
+            </div>
+            {distanceError && (
+              <div className="mt-3 flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{distanceError}</span>
+              </div>
+            )}
+            {distanceResult && (
+              <div className="mt-3 bg-neutral-50 dark:bg-dark-bg rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-primary-500">{distanceResult.distance_km} km</p>
+                <p className="text-xs text-neutral-500 dark:text-dark-muted mt-0.5">
+                  à vol d'oiseau &bull; ~{distanceResult.duration_min} min estimées à vitesse moyenne
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center">
+            <h3 className="section-title">Résumé (exemple)</h3>
+            <DemoBadge />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
               { l: 'Distance Moyenne', v: '12.4 km', sub: 'entre points voisins', c: 'text-primary-500' },
@@ -220,20 +375,20 @@ export default function AnalysisPage() {
             ))}
           </div>
           <div className="card p-5">
-            <h3 className="section-title mb-3">Matrice Distances Inter-Zones (km)</h3>
+            <h3 className="section-title mb-3 flex items-center">Matrice Distances Inter-Zones (km)<DemoBadge /></h3>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr>
                     <th className="table-th">Zone</th>
-                    {mockZones.map(z => <th key={z.id} className="table-th">{z.name.replace('Zone ', '')}</th>)}
+                    {zones.map(z => <th key={z.id} className="table-th">{z.name.replace('Zone ', '')}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {mockZones.map((z, i) => (
+                  {zones.map((z, i) => (
                     <tr key={z.id} className="hover:bg-neutral-50 dark:hover:bg-dark-bg/50">
                       <td className="table-td font-medium">{z.name}</td>
-                      {mockZones.map((z2, j) => {
+                      {zones.map((z2, j) => {
                         const d = i === j ? '—' : Math.abs((i + 1) * 7 - (j + 1) * 5 + 8) + 'km';
                         return (
                           <td key={z2.id} className={`table-td text-center ${i === j ? 'bg-neutral-50 dark:bg-dark-bg' : ''}`}>
@@ -255,7 +410,7 @@ export default function AnalysisPage() {
           <div className="card p-5">
             <h3 className="section-title mb-4">Taux de Couverture par Zone</h3>
             <div className="flex flex-wrap gap-8 justify-around">
-              {mockZones.map(z => (
+              {zones.map(z => (
                 <CoverageRings key={z.id} zone={z.name.replace('Zone ', '')}
                   pct={z.coverage}
                   color={z.score === 'high' ? '#10B981' : z.score === 'medium' ? '#F59E0B' : '#EF4444'} />
@@ -263,7 +418,7 @@ export default function AnalysisPage() {
             </div>
           </div>
           <div className="card p-5">
-            <h3 className="section-title mb-3">Évolution de la Couverture</h3>
+            <h3 className="section-title mb-3 flex items-center">Évolution de la Couverture<DemoBadge /></h3>
             <LineChart data={[
               { label: 'Oct', value: 62 }, { label: 'Nov', value: 66 }, { label: 'Déc', value: 68 },
               { label: 'Jan', value: 70 }, { label: 'Fév', value: 71 }, { label: 'Mar', value: 73 }, { label: 'Avr', value: 74 },
