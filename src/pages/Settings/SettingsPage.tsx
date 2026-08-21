@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Sliders, Bell, Shield, Database, Plus, CreditCard as Edit2, Trash2, Check,
-  X, Search, AlertCircle, CheckCircle2,
+  X, Search, AlertCircle, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { UserOut } from '../../services/auth';
@@ -9,6 +9,10 @@ import {
   listUsersApi, inviteUserApi, updateUserApi, deactivateUserApi,
 } from '../../services/users';
 import type { InvitePayload, UpdateUserPayload } from '../../services/users';
+import { getSettingsApi, updateSettingsApi } from '../../services/settings';
+import type { SettingsOut } from '../../services/settings';
+import { getSyncStatusApi, triggerSyncApi } from '../../services/sync';
+import type { SyncJobOut } from '../../services/sync';
 
 type SettingsTab = 'users' | 'system' | 'notifications' | 'security' | 'data';
 
@@ -21,6 +25,7 @@ const tabs: { id: SettingsTab; label: string; icon: React.FC<{ size?: number; cl
 ];
 
 const PAGE_SIZE = 20;
+const SYNC_STATUS_REFRESH_DELAY_MS = 4000;
 
 const roleBadge = (role: number) =>
   role === 1 ? <span className="badge-danger">Admin</span> : <span className="badge-blue">Analyste</span>;
@@ -31,8 +36,11 @@ const statusBadge = (status: string) => {
   return <span className="badge-gray">Inactif</span>;
 };
 
-const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
-  <div className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${checked ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-dark-border'}`} onClick={onChange}>
+const Toggle = ({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) => (
+  <div
+    className={`relative w-9 h-5 rounded-full transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${checked ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-dark-border'}`}
+    onClick={() => !disabled && onChange()}
+  >
     <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
   </div>
 );
@@ -219,7 +227,6 @@ export default function SettingsPage() {
   const isAdmin = currentUser?.role === 1;
 
   const [tab, setTab] = useState<SettingsTab>(isAdmin ? 'users' : 'system');
-  const [saved, setSaved] = useState(false);
 
   // Onglet Utilisateurs — données API
   const [users, setUsers] = useState<UserOut[]>([]);
@@ -240,17 +247,27 @@ export default function SettingsPage() {
   const [deactivateLoading, setDeactivateLoading] = useState(false);
   const [deactivateError, setDeactivateError] = useState('');
 
-  const [notifSettings, setNotifSettings] = useState({
-    criticalAlerts: true, zoneWarnings: true, dataImport: true,
-    weeklyReport: false, scoreChanges: true, newProspects: false,
-  });
+  // Onglets Système/Alertes/Sécurité/Données — GET/PUT /api/settings
+  const [settings, setSettings] = useState<SettingsOut | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
 
-  const [systemSettings, setSystemSettings] = useState({
-    autoRefresh: true, darkMapDefault: false, clusteringEnabled: true,
-    heatmapDefault: false, autoBackup: true, publicAPI: false,
-  });
+  const [alertScoreThreshold, setAlertScoreThreshold] = useState(0);
+  const [alertRevenueDropPercent, setAlertRevenueDropPercent] = useState(0);
+  const [securitySessionTimeout, setSecuritySessionTimeout] = useState(0);
+  const [securityRequireStrongPassword, setSecurityRequireStrongPassword] = useState(false);
+  const [dataAutoSyncEnabled, setDataAutoSyncEnabled] = useState(false);
+  const [dataRetentionDays, setDataRetentionDays] = useState(0);
 
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  // Onglet Données — statut de synchronisation réel (jamais branché avant)
+  const [syncStatus, setSyncStatus] = useState<SyncJobOut | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  const [syncTriggering, setSyncTriggering] = useState(false);
 
   // Debounce simple sur la recherche pour éviter un appel API par frappe.
   useEffect(() => {
@@ -286,6 +303,33 @@ export default function SettingsPage() {
     if (tab === 'users' && isAdmin) fetchUsers();
   }, [tab, isAdmin, fetchUsers]);
 
+  useEffect(() => {
+    setSettingsLoading(true);
+    setSettingsError('');
+    getSettingsApi()
+      .then(s => {
+        setSettings(s);
+        setAlertScoreThreshold(s.alerts.score_threshold);
+        setAlertRevenueDropPercent(s.alerts.revenue_drop_percent);
+        setSecuritySessionTimeout(s.security.session_timeout_minutes);
+        setSecurityRequireStrongPassword(s.security.require_strong_password);
+        setDataAutoSyncEnabled(s.data.auto_sync_enabled);
+        setDataRetentionDays(s.data.retention_days);
+      })
+      .catch(err => setSettingsError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setSettingsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'data') return;
+    setSyncLoading(true);
+    setSyncError('');
+    getSyncStatusApi()
+      .then(setSyncStatus)
+      .catch(err => setSyncError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setSyncLoading(false));
+  }, [tab]);
+
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(''), 3000);
@@ -306,8 +350,60 @@ export default function SettingsPage() {
     }
   };
 
+  async function handleSave() {
+    if (!isAdmin) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      let updated: SettingsOut;
+      if (tab === 'notifications') {
+        updated = await updateSettingsApi({
+          alerts: { score_threshold: alertScoreThreshold, revenue_drop_percent: alertRevenueDropPercent },
+        });
+      } else if (tab === 'security') {
+        updated = await updateSettingsApi({
+          security: { session_timeout_minutes: securitySessionTimeout, require_strong_password: securityRequireStrongPassword },
+        });
+      } else if (tab === 'data') {
+        updated = await updateSettingsApi({
+          data: { auto_sync_enabled: dataAutoSyncEnabled, retention_days: dataRetentionDays },
+        });
+      } else {
+        return;
+      }
+      setSettings(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Erreur serveur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleTriggerSync() {
+    setSyncTriggering(true);
+    setSyncError('');
+    triggerSyncApi()
+      .then(() => {
+        // Pas d'endpoint de statut de job en temps réel : on relance une seule
+        // fois getSyncStatusApi après un court délai plutôt qu'un polling continu.
+        setTimeout(() => {
+          getSyncStatusApi()
+            .then(setSyncStatus)
+            .catch(err => setSyncError(err instanceof Error ? err.message : 'Erreur serveur'))
+            .finally(() => setSyncTriggering(false));
+        }, SYNC_STATUS_REFRESH_DELAY_MS);
+      })
+      .catch(err => {
+        setSyncError(err instanceof Error ? err.message : 'Erreur serveur');
+        setSyncTriggering(false);
+      });
+  }
+
   const visibleTabs = tabs.filter((t) => t.id !== 'users' || isAdmin);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const showSaveButton = tab === 'notifications' || tab === 'security' || tab === 'data';
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-fade-in">
@@ -316,10 +412,31 @@ export default function SettingsPage() {
           <h1 className="page-title">Paramètres</h1>
           <p className="text-sm text-neutral-500 dark:text-dark-muted mt-0.5">Configuration système, utilisateurs et préférences</p>
         </div>
-        <button onClick={handleSave} className="btn-primary flex items-center gap-1.5">
-          {saved ? <><Check size={14} />Sauvegardé !</> : 'Sauvegarder'}
-        </button>
+        {showSaveButton && (
+          <button onClick={handleSave} disabled={!isAdmin || saving} className="btn-primary flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+            {saving ? (
+              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            ) : saved ? (
+              <><Check size={14} />Sauvegardé !</>
+            ) : (
+              'Sauvegarder'
+            )}
+          </button>
+        )}
       </div>
+
+      {!isAdmin && showSaveButton && (
+        <div className="flex items-start gap-2 text-xs text-neutral-500 bg-neutral-50 dark:bg-dark-bg dark:text-dark-muted border border-neutral-200 dark:border-dark-border rounded-lg p-3">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>Lecture seule : seul un administrateur peut modifier ces réglages.</span>
+        </div>
+      )}
+      {saveError && (
+        <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{saveError}</span>
+        </div>
+      )}
 
       <div className="flex gap-1 overflow-x-auto p-1 bg-neutral-100 dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-xl w-fit">
         {visibleTabs.map(({ id, label, icon: Icon }) => (
@@ -475,157 +592,176 @@ export default function SettingsPage() {
       )}
 
       {tab === 'system' && (
-        <div className="card p-5 animate-fade-in space-y-1">
-          <h3 className="section-title mb-4">Configuration Système</h3>
-          {[
-            { key: 'autoRefresh', label: 'Actualisation automatique', desc: 'Rafraîchir les données toutes les 5 minutes' },
-            { key: 'darkMapDefault', label: 'Carte sombre par défaut', desc: 'Utiliser le thème sombre pour la carte' },
-            { key: 'clusteringEnabled', label: 'Clustering activé', desc: 'Regrouper les marqueurs proches en clusters' },
-            { key: 'heatmapDefault', label: 'Heatmap par défaut', desc: 'Afficher la heatmap au chargement de la carte' },
-            { key: 'autoBackup', label: 'Sauvegarde automatique', desc: 'Backup quotidien à 2h00 (UTC)' },
-            { key: 'publicAPI', label: 'API publique', desc: 'Activer l\'accès à l\'API REST publique' },
-          ].map(({ key, label, desc }) => (
-            <div key={key} className="flex items-center justify-between py-3 border-b border-neutral-100 dark:border-dark-border last:border-0">
-              <div>
-                <p className="text-sm font-medium text-neutral-800 dark:text-dark-text">{label}</p>
-                <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5">{desc}</p>
-              </div>
-              <Toggle
-                checked={systemSettings[key as keyof typeof systemSettings]}
-                onChange={() => setSystemSettings(prev => ({ ...prev, [key]: !prev[key as keyof typeof systemSettings] }))}
-              />
+        <div className="card p-5 animate-fade-in space-y-4">
+          <h3 className="section-title">Configuration Système</h3>
+          {settingsLoading ? (
+            <div className="text-sm text-neutral-400 dark:text-dark-muted py-6 text-center">Chargement…</div>
+          ) : settingsError ? (
+            <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{settingsError}</span>
             </div>
-          ))}
-          <div className="pt-4 grid grid-cols-2 gap-4">
-            {[
-              { l: 'Fuseau horaire', v: 'Europe/Paris (UTC+2)' },
-              { l: 'Langue', v: 'Français' },
-              { l: 'Unité distance', v: 'Kilomètres' },
-              { l: 'Format date', v: 'JJ/MM/AAAA' },
-            ].map((s, i) => (
-              <div key={i}>
-                <label className="label">{s.l}</label>
-                <select className="input text-sm"><option>{s.v}</option></select>
+          ) : settings && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { l: 'Intervalle de synchronisation', v: `${settings.system.sync_interval_minutes} min` },
+                  { l: 'Latitude par défaut (carte)', v: settings.system.map_default_lat },
+                  { l: 'Longitude par défaut (carte)', v: settings.system.map_default_lng },
+                  { l: 'Zoom par défaut (carte)', v: settings.system.map_default_zoom },
+                ].map((s, i) => (
+                  <div key={i}>
+                    <label className="label">{s.l}</label>
+                    <div className="input flex items-center bg-neutral-50 dark:bg-dark-bg text-neutral-500 dark:text-dark-muted">{s.v}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+              <p className="text-xs text-neutral-400 dark:text-dark-muted">
+                Ces valeurs sont dérivées de la configuration serveur (variables d'environnement) et ne sont pas modifiables ici.
+              </p>
+            </>
+          )}
         </div>
       )}
 
       {tab === 'notifications' && (
-        <div className="card p-5 animate-fade-in space-y-1">
-          <h3 className="section-title mb-4">Paramètres des Alertes</h3>
-          {[
-            { key: 'criticalAlerts', label: 'Alertes critiques', desc: 'Notifier si un score de zone passe en dessous de 40' },
-            { key: 'zoneWarnings', label: 'Avertissements de zone', desc: 'Score en baisse de plus de 5 points' },
-            { key: 'dataImport', label: 'Import de données', desc: 'Confirmer les imports réussis ou échoués' },
-            { key: 'weeklyReport', label: 'Rapport hebdomadaire', desc: 'Envoi automatique chaque lundi matin' },
-            { key: 'scoreChanges', label: 'Changements de score', desc: 'Tout changement de score significatif' },
-            { key: 'newProspects', label: 'Nouveaux prospects', desc: 'Notification pour chaque prospect qualifié' },
-          ].map(({ key, label, desc }) => (
-            <div key={key} className="flex items-center justify-between py-3 border-b border-neutral-100 dark:border-dark-border last:border-0">
+        <div className="card p-5 animate-fade-in space-y-4">
+          <h3 className="section-title">Seuils d'Alerte</h3>
+          {settingsLoading ? (
+            <div className="text-sm text-neutral-400 dark:text-dark-muted py-6 text-center">Chargement…</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
               <div>
-                <p className="text-sm font-medium text-neutral-800 dark:text-dark-text">{label}</p>
-                <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5">{desc}</p>
+                <label className="label">Seuil de score critique</label>
+                <input
+                  type="number" min={0} max={100} className="input"
+                  value={alertScoreThreshold}
+                  disabled={!isAdmin}
+                  onChange={e => setAlertScoreThreshold(Number(e.target.value))}
+                />
+                <p className="text-xs text-neutral-400 dark:text-dark-muted mt-1">Score de zone en dessous duquel une alerte est déclenchée.</p>
               </div>
-              <Toggle
-                checked={notifSettings[key as keyof typeof notifSettings]}
-                onChange={() => setNotifSettings(prev => ({ ...prev, [key]: !prev[key as keyof typeof notifSettings] }))}
-              />
+              <div>
+                <label className="label">Seuil de baisse de revenu (%)</label>
+                <input
+                  type="number" min={0} max={100} className="input"
+                  value={alertRevenueDropPercent}
+                  disabled={!isAdmin}
+                  onChange={e => setAlertRevenueDropPercent(Number(e.target.value))}
+                />
+              </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
       {tab === 'security' && (
-        <div className="space-y-4 animate-fade-in">
-          <div className="card p-5 space-y-4">
-            <h3 className="section-title">Authentification</h3>
-            <div>
-              <label className="label">Durée session</label>
-              <select className="input max-w-xs">
-                <option>8 heures</option>
-                <option>24 heures</option>
-                <option>7 jours</option>
-              </select>
-            </div>
-            <div className="flex items-center justify-between py-3 border-t border-neutral-100 dark:border-dark-border">
+        <div className="card p-5 space-y-4 animate-fade-in">
+          <h3 className="section-title">Authentification</h3>
+          {settingsLoading ? (
+            <div className="text-sm text-neutral-400 dark:text-dark-muted py-6 text-center">Chargement…</div>
+          ) : (
+            <>
               <div>
-                <p className="text-sm font-medium text-neutral-800 dark:text-dark-text">Authentification 2FA</p>
-                <p className="text-xs text-neutral-400 dark:text-dark-muted">Requiert un code OTP à chaque connexion</p>
+                <label className="label">Durée de session (minutes)</label>
+                <input
+                  type="number" min={1} className="input max-w-xs"
+                  value={securitySessionTimeout}
+                  disabled={!isAdmin}
+                  onChange={e => setSecuritySessionTimeout(Number(e.target.value))}
+                />
               </div>
-              <Toggle checked={true} onChange={() => {}} />
-            </div>
-          </div>
-          <div className="card p-5 space-y-3">
-            <h3 className="section-title">Journal d'accès</h3>
-            <div className="space-y-2">
-              {[
-                { u: 'Sophie Martin', a: 'Connexion', t: 'Aujourd\'hui 09:32', ip: '192.168.1.42' },
-                { u: 'Lucas Bernard', a: 'Export rapport', t: 'Aujourd\'hui 08:15', ip: '10.0.0.88' },
-                { u: 'Emma Dubois', a: 'Connexion', t: 'Hier 17:44', ip: '172.16.0.5' },
-              ].map((e, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-neutral-100 dark:border-dark-border last:border-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-primary-50 dark:bg-blue-900/20 text-primary-500 flex items-center justify-center text-xs font-bold">
-                      {e.u.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-neutral-800 dark:text-dark-text">{e.u}</p>
-                      <p className="text-xs text-neutral-400 dark:text-dark-muted">{e.a}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-neutral-500 dark:text-dark-muted">{e.t}</p>
-                    <p className="text-xs font-mono text-neutral-400 dark:text-dark-muted">{e.ip}</p>
-                  </div>
+              <div className="flex items-center justify-between py-3 border-t border-neutral-100 dark:border-dark-border">
+                <div>
+                  <p className="text-sm font-medium text-neutral-800 dark:text-dark-text">Mot de passe fort exigé</p>
+                  <p className="text-xs text-neutral-400 dark:text-dark-muted">Impose des règles de complexité à l'inscription</p>
                 </div>
-              ))}
-            </div>
-          </div>
+                <Toggle
+                  checked={securityRequireStrongPassword}
+                  onChange={() => setSecurityRequireStrongPassword(v => !v)}
+                  disabled={!isAdmin}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {tab === 'data' && (
         <div className="space-y-4 animate-fade-in">
-          <div className="card p-5">
-            <h3 className="section-title mb-4">Gestion des Données</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[
-                { l: 'Volume total', v: '416 points', sub: '3.2 MB' },
-                { l: 'Dernière sauvegarde', v: 'Auj. 03:00', sub: 'Succès' },
-                { l: 'Rétention', v: '24 mois', sub: 'Politique active' },
-              ].map((m, i) => (
-                <div key={i} className="bg-neutral-50 dark:bg-dark-bg rounded-xl p-4 text-center">
-                  <p className="text-base font-bold text-neutral-900 dark:text-dark-text">{m.v}</p>
-                  <p className="text-xs text-neutral-500 dark:text-dark-muted mt-0.5">{m.l}</p>
-                  <span className="badge-success text-xs mt-1">{m.sub}</span>
+          <div className="card p-5 space-y-4">
+            <h3 className="section-title">Gestion des Données</h3>
+            {settingsLoading ? (
+              <div className="text-sm text-neutral-400 dark:text-dark-muted py-6 text-center">Chargement…</div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between py-3 border-b border-neutral-100 dark:border-dark-border">
+                  <div>
+                    <p className="text-sm font-medium text-neutral-800 dark:text-dark-text">Synchronisation automatique</p>
+                    <p className="text-xs text-neutral-400 dark:text-dark-muted mt-0.5 max-w-md">
+                      ⚠️ Valeur stockée uniquement pour l'instant : le planificateur tourne sur un
+                      intervalle fixe et ne lit pas encore ce réglage — le désactiver n'arrête
+                      rien réellement pour le moment.
+                    </p>
+                  </div>
+                  <Toggle checked={dataAutoSyncEnabled} onChange={() => setDataAutoSyncEnabled(v => !v)} disabled={!isAdmin} />
                 </div>
-              ))}
-            </div>
+                <div>
+                  <label className="label">Rétention des données (jours)</label>
+                  <input
+                    type="number" min={1} className="input max-w-xs"
+                    value={dataRetentionDays}
+                    disabled={!isAdmin}
+                    onChange={e => setDataRetentionDays(Number(e.target.value))}
+                  />
+                </div>
+              </>
+            )}
           </div>
+
           <div className="card p-5">
-            <h3 className="section-title mb-3">Sources de données</h3>
-            <div className="space-y-2">
-              {[
-                { name: 'Import CSV Manuel', status: 'active', last: 'Il y a 2h' },
-                { name: 'API REST GeoData', status: 'active', last: 'Il y a 5 min' },
-                { name: 'Sync CRM Salesforce', status: 'inactive', last: 'Il y a 3j' },
-              ].map((s, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-dark-bg rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${s.status === 'active' ? 'bg-success' : 'bg-neutral-300 dark:bg-dark-muted'}`} />
-                    <span className="text-sm font-medium text-neutral-800 dark:text-dark-text">{s.name}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-neutral-400 dark:text-dark-muted">{s.last}</span>
-                    <span className={s.status === 'active' ? 'badge-success' : 'badge-gray'}>
-                      {s.status === 'active' ? 'Actif' : 'Inactif'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="section-title">Synchronisation</h3>
+              {isAdmin && (
+                <button
+                  onClick={handleTriggerSync}
+                  disabled={syncTriggering}
+                  className="btn-primary text-xs flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {syncTriggering ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <RefreshCw size={13} />
+                  )}
+                  Synchroniser maintenant
+                </button>
+              )}
             </div>
+            {syncLoading ? (
+              <div className="text-sm text-neutral-400 dark:text-dark-muted py-4 text-center">Chargement…</div>
+            ) : syncError ? (
+              <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{syncError}</span>
+              </div>
+            ) : syncStatus ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-neutral-50 dark:bg-dark-bg rounded-xl p-4 text-center">
+                  <p className="text-base font-bold text-neutral-900 dark:text-dark-text capitalize">{syncStatus.status}</p>
+                  <p className="text-xs text-neutral-500 dark:text-dark-muted mt-0.5">Dernier statut</p>
+                </div>
+                <div className="bg-neutral-50 dark:bg-dark-bg rounded-xl p-4 text-center">
+                  <p className="text-base font-bold text-neutral-900 dark:text-dark-text">{syncStatus.records_imported}</p>
+                  <p className="text-xs text-neutral-500 dark:text-dark-muted mt-0.5">Trajets importés</p>
+                </div>
+                <div className="bg-neutral-50 dark:bg-dark-bg rounded-xl p-4 text-center">
+                  <p className="text-base font-bold text-neutral-900 dark:text-dark-text">{new Date(syncStatus.started_at).toLocaleString('fr-FR')}</p>
+                  <p className="text-xs text-neutral-500 dark:text-dark-muted mt-0.5">Démarré le</p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-neutral-400 dark:text-dark-muted py-4 text-center">Aucune synchronisation enregistrée</div>
+            )}
           </div>
         </div>
       )}

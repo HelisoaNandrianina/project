@@ -103,3 +103,21 @@ export async function apiFetchJson<T>(
   if (!res.ok) throw new Error(await parseErrorDetail(res, fallbackError));
   return res.json();
 }
+
+/**
+ * Déclenche le téléchargement d'une réponse binaire (FileResponse côté serveur,
+ * pas du JSON) : vérifie le statut, puis simule un clic sur un lien <a download>.
+ */
+export async function downloadBlob(res: Response, filename: string): Promise<void> {
+  if (!res.ok) {
+    throw new Error(await parseErrorDetail(res, "Impossible de télécharger ce fichier"));
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

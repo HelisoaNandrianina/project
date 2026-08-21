@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchJson } from "./apiClient";
+import { apiFetch, apiFetchJson, downloadBlob } from "./apiClient";
 import type { DataPoint } from "../types";
 
 export interface DataPointApiOut {
@@ -147,22 +147,5 @@ export async function downloadPointsExport(
   search.set("format", params.format ?? "csv");
 
   const res = await apiFetch(`/api/points/export?${search.toString()}`);
-  if (!res.ok) {
-    let message = "Impossible d'exporter les points";
-    try {
-      const body = await res.json();
-      message = body.detail || message;
-    } catch {
-      // La réponse d'échec n'est pas garantie d'être du JSON (ex: erreur serveur brute).
-    }
-    throw new Error(message);
-  }
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `datapoints_export.${params.format ?? "csv"}`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadBlob(res, `datapoints_export.${params.format ?? "csv"}`);
 }

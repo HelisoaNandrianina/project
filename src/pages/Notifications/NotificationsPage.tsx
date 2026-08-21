@@ -1,31 +1,61 @@
-import { useState } from 'react';
-import { Bell, AlertTriangle, CheckCircle, Info, X, Check, Filter, BellOff } from 'lucide-react';
-import { mockNotifications } from '../../data/mockData';
-import type { Notification } from '../../types';
+import { useState, useEffect, useMemo } from 'react';
+import { Bell, AlertTriangle, CheckCircle, Info, Brain, FileText, X, Check, Filter, BellOff, AlertCircle } from 'lucide-react';
+import {
+  listNotificationsApi, markNotificationReadApi, markAllNotificationsReadApi, deleteNotificationApi,
+} from '../../services/notifications';
+import type { NotificationOut } from '../../services/notifications';
 
-type FilterType = 'all' | 'alert' | 'warning' | 'info' | 'success';
-type FilterPriority = 'all' | 'high' | 'medium' | 'low';
-
-const typeIcon = (type: Notification['type']) => {
+const typeIcon = (type: string) => {
   const cls = 'shrink-0';
   if (type === 'alert') return <AlertTriangle size={16} className={`text-danger ${cls}`} />;
   if (type === 'warning') return <AlertTriangle size={16} className={`text-warning ${cls}`} />;
   if (type === 'success') return <CheckCircle size={16} className={`text-success ${cls}`} />;
-  return <Info size={16} className={`text-primary-500 ${cls}`} />;
+  if (type === 'analysis') return <Brain size={16} className={`text-primary-500 ${cls}`} />;
+  if (type === 'report') return <FileText size={16} className={`text-primary-500 ${cls}`} />;
+  return <Info size={16} className={`text-primary-500 ${cls}`} />; // fallback : tout type inconnu
 };
 
-const typeBg = (type: Notification['type']) => {
+const typeBg = (type: string) => {
   if (type === 'alert') return 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/30';
   if (type === 'warning') return 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-800/30';
   if (type === 'success') return 'bg-green-50 dark:bg-green-900/10 border-green-100 dark:border-green-800/30';
-  return 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/30';
+  return 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/30'; // analysis/report/inconnu
 };
 
+// ⚠️ Le serveur n'émet aujourd'hui que priority="normal" (+ "high" en théorie) —
+// pas de niveau "medium"/"low" fermé, donc tout ce qui n'est pas "high" tombe
+// dans un badge neutre plutôt que de forcer un mapping inventé.
+const priorityBadge = (priority: string) => {
+  if (priority === 'high') return <span className="badge-danger">Haute</span>;
+  return <span className="badge-gray">{priority === 'normal' ? 'Normale' : priority}</span>;
+};
+
+const priorityLabel = (p: string) => (p === 'all' ? 'Toute priorité' : p === 'high' ? 'Haute' : p === 'normal' ? 'Normale' : p);
+
 export default function NotificationsPage() {
-  const [filterType, setFilterType] = useState<FilterType>('all');
-  const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
+  const [notifications, setNotifications] = useState<NotificationOut[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+
+  const [filterType, setFilterType] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
-  const [notifications, setNotifications] = useState(mockNotifications);
+
+  useEffect(() => {
+    setLoading(true);
+    setLoadError('');
+    listNotificationsApi({ limit: 200 })
+      .then(setNotifications)
+      .catch(err => setLoadError(err instanceof Error ? err.message : 'Erreur serveur'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Filtres dynamiques : uniquement les valeurs réellement présentes dans les
+  // notifications reçues, sinon les types serveur ("analysis","report")
+  // n'apparaîtraient jamais.
+  const types = useMemo(() => ['all', ...Array.from(new Set(notifications.map(n => n.type)))], [notifications]);
+  const priorities = useMemo(() => ['all', ...Array.from(new Set(notifications.map(n => n.priority)))], [notifications]);
 
   const filtered = notifications.filter(n => {
     const matchType = filterType === 'all' || n.type === filterType;
@@ -36,9 +66,38 @@ export default function NotificationsPage() {
 
   const unread = notifications.filter(n => !n.read).length;
 
-  const markRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  const dismiss = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
+  async function markRead(id: string) {
+    const prev = notifications;
+    setNotifications(ns => ns.map(n => (n.id === id ? { ...n, read: true } : n)));
+    try {
+      await markNotificationReadApi(id);
+    } catch (err) {
+      setNotifications(prev);
+      setActionError(err instanceof Error ? err.message : 'Erreur serveur');
+    }
+  }
+
+  async function markAllRead() {
+    const prev = notifications;
+    setNotifications(ns => ns.map(n => ({ ...n, read: true })));
+    try {
+      await markAllNotificationsReadApi();
+    } catch (err) {
+      setNotifications(prev);
+      setActionError(err instanceof Error ? err.message : 'Erreur serveur');
+    }
+  }
+
+  async function dismiss(id: string) {
+    const prev = notifications;
+    setNotifications(ns => ns.filter(n => n.id !== id));
+    try {
+      await deleteNotificationApi(id);
+    } catch (err) {
+      setNotifications(prev);
+      setActionError(err instanceof Error ? err.message : 'Erreur serveur');
+    }
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-fade-in">
@@ -58,15 +117,28 @@ export default function NotificationsPage() {
         </div>
       </div>
 
+      {loadError && (
+        <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{loadError}</span>
+        </div>
+      )}
+      {actionError && (
+        <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{actionError}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { l: 'Non lues', v: String(unread), c: 'text-primary-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { l: 'Critiques', v: String(notifications.filter(n => n.priority === 'high').length), c: 'text-danger', bg: 'bg-red-50 dark:bg-red-900/20' },
-          { l: 'Avertissements', v: String(notifications.filter(n => n.type === 'warning').length), c: 'text-warning', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
-          { l: 'Total', v: String(notifications.length), c: 'text-neutral-500 dark:text-dark-muted', bg: '' },
+          { l: 'Non lues', v: String(unread), c: 'text-primary-500' },
+          { l: 'Critiques', v: String(notifications.filter(n => n.priority === 'high').length), c: 'text-danger' },
+          { l: 'Analyses', v: String(notifications.filter(n => n.type === 'analysis').length), c: 'text-primary-500' },
+          { l: 'Total', v: String(notifications.length), c: 'text-neutral-500 dark:text-dark-muted' },
         ].map((s, i) => (
           <div key={i} className="card p-4">
-            <p className={`text-xl font-bold ${s.c}`}>{s.v}</p>
+            <p className={`text-xl font-bold ${s.c}`}>{loading ? '…' : s.v}</p>
             <p className="text-xs text-neutral-500 dark:text-dark-muted mt-0.5">{s.l}</p>
           </div>
         ))}
@@ -74,7 +146,7 @@ export default function NotificationsPage() {
 
       <div className="flex flex-wrap gap-2 items-center">
         <div className="flex gap-0.5 p-1 bg-neutral-100 dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-lg">
-          {(['all', 'alert', 'warning', 'success', 'info'] as FilterType[]).map(t => (
+          {types.map(t => (
             <button key={t} onClick={() => setFilterType(t)}
               className={`px-2.5 py-1 rounded text-xs font-medium transition-all capitalize ${filterType === t ? 'bg-white dark:bg-dark-border text-neutral-900 dark:text-dark-text shadow-sm' : 'text-neutral-500 dark:text-dark-muted'}`}>
               {t === 'all' ? 'Tous' : t}
@@ -83,10 +155,10 @@ export default function NotificationsPage() {
         </div>
 
         <div className="flex gap-0.5 p-1 bg-neutral-100 dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-lg">
-          {(['all', 'high', 'medium', 'low'] as FilterPriority[]).map(p => (
+          {priorities.map(p => (
             <button key={p} onClick={() => setFilterPriority(p)}
               className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${filterPriority === p ? 'bg-white dark:bg-dark-border text-neutral-900 dark:text-dark-text shadow-sm' : 'text-neutral-500 dark:text-dark-muted'}`}>
-              {p === 'all' ? 'Toute priorité' : p === 'high' ? 'Haute' : p === 'medium' ? 'Moyenne' : 'Faible'}
+              {priorityLabel(p)}
             </button>
           ))}
         </div>
@@ -105,7 +177,9 @@ export default function NotificationsPage() {
       </div>
 
       <div className="space-y-2">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="card p-12 text-center text-sm text-neutral-400 dark:text-dark-muted">Chargement…</div>
+        ) : filtered.length === 0 ? (
           <div className="card p-12 text-center">
             <BellOff size={36} className="text-neutral-300 dark:text-dark-muted mx-auto mb-3" />
             <p className="text-sm font-medium text-neutral-500 dark:text-dark-muted">Aucune notification</p>
@@ -123,9 +197,7 @@ export default function NotificationsPage() {
                     {!n.read && (
                       <div className="w-1.5 h-1.5 rounded-full bg-primary-500 shrink-0" />
                     )}
-                    <span className={n.priority === 'high' ? 'badge-danger' : n.priority === 'medium' ? 'badge-warning' : 'badge-success'}>
-                      {n.priority === 'high' ? 'Haute' : n.priority === 'medium' ? 'Moyenne' : 'Faible'}
-                    </span>
+                    {priorityBadge(n.priority)}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {!n.read && (
@@ -143,7 +215,9 @@ export default function NotificationsPage() {
                 <p className="text-xs text-neutral-600 dark:text-dark-muted mt-1 leading-relaxed">{n.message}</p>
                 <div className="flex items-center gap-1.5 mt-2">
                   <Bell size={10} className="text-neutral-400" />
-                  <span className="text-xs text-neutral-400 dark:text-dark-muted">{n.timestamp}</span>
+                  <span className="text-xs text-neutral-400 dark:text-dark-muted">
+                    {new Date(n.timestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
                   {n.read && <span className="text-xs text-neutral-300 dark:text-dark-muted ml-1">&bull; Lu</span>}
                 </div>
               </div>
